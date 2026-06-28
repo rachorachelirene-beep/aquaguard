@@ -4,6 +4,7 @@ import json
 import os
 import threading
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -22,7 +23,7 @@ from ultralytics import YOLO
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env", override=True)
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -114,6 +115,11 @@ SUPABASE_WRITE_INTERVAL = max(
     int(os.getenv("SUPABASE_WRITE_INTERVAL", "5")),
 )
 
+ALERT_COOLDOWN_SECONDS = max(
+    30,
+    int(os.getenv("ALERT_COOLDOWN_SECONDS", "300")),
+)
+
 SUPABASE_URL = os.getenv(
     "SUPABASE_URL",
     "",
@@ -166,6 +172,9 @@ yolo_error: str | None = None
 
 supabase: Client | None = None
 supabase_error: str | None = None
+
+alert_lock = threading.Lock()
+last_alert_times: dict[tuple[int, str], float] = {}
 
 active_station_id = DEFAULT_STATION_ID
 
@@ -298,6 +307,47 @@ def set_active_station_id(value: str | int | None) -> int:
 # Camera helpers
 # =========================================================
 
+def normalize_camera_frame(frame: np.ndarray) -> np.ndarray:
+    """Return a safe contiguous BGR uint8 frame for OpenCV and YOLO."""
+
+    if frame is None:
+        raise RuntimeError("Camera returned an empty frame.")
+
+    safe_frame = np.asarray(frame)
+
+    if safe_frame.ndim == 2:
+        safe_frame = cv2.cvtColor(
+            np.ascontiguousarray(safe_frame),
+            cv2.COLOR_GRAY2BGR,
+        )
+    elif safe_frame.ndim == 3 and safe_frame.shape[2] == 1:
+        safe_frame = cv2.cvtColor(
+            np.ascontiguousarray(safe_frame),
+            cv2.COLOR_GRAY2BGR,
+        )
+    elif safe_frame.ndim == 3 and safe_frame.shape[2] == 4:
+        safe_frame = cv2.cvtColor(
+            np.ascontiguousarray(safe_frame),
+            cv2.COLOR_BGRA2BGR,
+        )
+    elif safe_frame.ndim != 3 or safe_frame.shape[2] != 3:
+        raise RuntimeError(
+            f"Unsupported camera frame shape: {safe_frame.shape}"
+        )
+
+    if safe_frame.dtype != np.uint8:
+        safe_frame = np.clip(
+            safe_frame,
+            0,
+            255,
+        ).astype(np.uint8)
+
+    return np.ascontiguousarray(
+        safe_frame.copy(),
+        dtype=np.uint8,
+    )
+
+
 def build_rtsp_url() -> str:
     if not CAMERA_USERNAME:
         raise RuntimeError("CAMERA_USERNAME is missing.")
@@ -338,11 +388,10 @@ def try_webcam(
         capture.release()
         return None
 
-    success, frame = capture.read()
-
-    if not success or frame is None:
-        capture.release()
-        return None
+    capture.set(
+        cv2.CAP_PROP_FOURCC,
+        cv2.VideoWriter_fourcc(*"MJPG"),
+    )
 
     capture.set(
         cv2.CAP_PROP_FRAME_WIDTH,
@@ -364,6 +413,18 @@ def try_webcam(
         1,
     )
 
+    success, frame = capture.read()
+
+    if not success or frame is None:
+        capture.release()
+        return None
+
+    try:
+        normalize_camera_frame(frame)
+    except Exception:
+        capture.release()
+        return None
+
     return capture
 
 
@@ -382,8 +443,8 @@ def open_camera() -> cv2.VideoCapture:
 
         if os.name == "nt":
             backends = [
-                ("MSMF", cv2.CAP_MSMF),
                 ("DSHOW", cv2.CAP_DSHOW),
+                ("MSMF", cv2.CAP_MSMF),
                 ("AUTO", cv2.CAP_ANY),
             ]
         else:
@@ -525,7 +586,13 @@ def determine_level_status(
     if not detected:
         return "no_detection"
 
-    return "ok"
+    if level_m >= CRITICAL_LEVEL_M:
+        return "critical"
+
+    if level_m >= WARNING_LEVEL_M:
+        return "warning"
+
+    return "normal"
 
 
 def run_yolo_detection(
@@ -563,8 +630,13 @@ def run_yolo_detection(
 
         return result, empty_mask
 
+    safe_frame = normalize_camera_frame(frame)
+
     prediction = yolo_model.predict(
-        source=frame,
+        source=np.ascontiguousarray(
+            safe_frame.copy(),
+            dtype=np.uint8,
+        ),
         conf=YOLO_CONFIDENCE,
         verbose=False,
     )[0]
@@ -618,11 +690,12 @@ def run_yolo_detection(
             if class_id not in flood_class_ids:
                 continue
 
-            mask_array = (
+            mask_array = np.ascontiguousarray(
                 mask_tensor
                 .detach()
                 .cpu()
-                .numpy()
+                .numpy(),
+                dtype=np.float32,
             )
 
             resized_mask = cv2.resize(
@@ -631,9 +704,9 @@ def run_yolo_detection(
                 interpolation=cv2.INTER_NEAREST,
             )
 
-            binary_mask = (
-                resized_mask > 0.5
-            ).astype(np.uint8)
+            binary_mask = np.ascontiguousarray(
+                (resized_mask > 0.5).astype(np.uint8)
+            )
 
             water_mask = cv2.bitwise_or(
                 water_mask,
@@ -754,7 +827,7 @@ def annotate_frame(
     detection: dict,
     water_mask: np.ndarray | None,
 ) -> np.ndarray:
-    output = frame.copy()
+    output = normalize_camera_frame(frame)
     frame_height, frame_width = output.shape[:2]
 
     if (
@@ -928,6 +1001,116 @@ def annotate_frame(
 # Supabase writing
 # =========================================================
 
+def create_alert_if_needed(
+    detection: dict,
+) -> None:
+    """Create a Warning/Critical alert with an in-memory cooldown."""
+
+    if supabase is None:
+        return
+
+    status = str(
+        detection.get("status") or ""
+    ).strip().lower()
+
+    if status not in {"warning", "critical"}:
+        return
+
+    station_id = int(
+        detection.get("station_id")
+        or DEFAULT_STATION_ID
+    )
+
+    level_m = float(
+        detection.get("level_m") or 0.0
+    )
+
+    water_coverage = float(
+        detection.get("water_coverage") or 0.0
+    )
+
+    confidence = float(
+        detection.get("confidence") or 0.0
+    )
+
+    flood_risk = float(
+        detection.get("flood_risk") or 0.0
+    )
+
+    detected_at = detection.get(
+        "detected_at"
+    ) or datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    alert_key = (
+        station_id,
+        status,
+    )
+
+    current_time = time.time()
+
+    with alert_lock:
+        last_alert_time = last_alert_times.get(
+            alert_key,
+            0.0,
+        )
+
+        if (
+            current_time - last_alert_time
+            < ALERT_COOLDOWN_SECONDS
+        ):
+            return
+
+        if status == "critical":
+            title = "Critical Flood Level Detected"
+            message = (
+                f"Critical flood level detected at "
+                f"{level_m:.2f} m. "
+                f"Water coverage: {water_coverage:.1f}%. "
+                f"AI confidence: {confidence * 100:.0f}%. "
+                f"Flood risk: {flood_risk * 100:.0f}%."
+            )
+        else:
+            title = "Flood Warning Detected"
+            message = (
+                f"Warning flood level detected at "
+                f"{level_m:.2f} m. "
+                f"Water coverage: {water_coverage:.1f}%. "
+                f"AI confidence: {confidence * 100:.0f}%. "
+                f"Flood risk: {flood_risk * 100:.0f}%."
+            )
+
+        try:
+            supabase.table("alerts").insert(
+                {
+                    "station_id": station_id,
+                    "type": status,
+                    "title": title,
+                    "message": message,
+                    "is_read": False,
+                    "is_resolved": False,
+                    "created_at": detected_at,
+                }
+            ).execute()
+
+            last_alert_times[alert_key] = (
+                current_time
+            )
+
+            print(
+                "Alert created | "
+                f"station={station_id} "
+                f"type={status} "
+                f"level={level_m:.2f}m"
+            )
+
+        except Exception as error:
+            print(
+                f"Alert creation error: {error}"
+            )
+
+
 def write_detection_to_supabase(
     detection: dict,
 ) -> None:
@@ -957,9 +1140,12 @@ def write_detection_to_supabase(
     )
 
     waterline_y = detection.get("waterline_y")
-    status = detection.get(
-        "status",
-        "no_detection",
+
+    status = str(
+        detection.get(
+            "status",
+            "no_detection",
+        )
     )
 
     detected_at = detection.get(
@@ -967,6 +1153,18 @@ def write_detection_to_supabase(
     ) or datetime.now(
         timezone.utc
     ).isoformat()
+
+    # detector_results and yolo_detections use an operational
+    # status constraint: ok, no_detection, or error. Flood
+    # severity remains in detection["status"] and is stored
+    # separately in the alerts table.
+    database_status = (
+        status
+        if status in {"no_detection", "error"}
+        else "ok"
+    )
+
+    create_alert_if_needed(detection)
 
     try:
         supabase.table("water_levels").insert(
@@ -990,7 +1188,7 @@ def write_detection_to_supabase(
                 "frame_height": detection.get(
                     "frame_height"
                 ),
-                "status": status,
+                "status": database_status,
                 "snapshot_path": None,
                 "detected_at": detected_at,
             }
@@ -1014,7 +1212,7 @@ def write_detection_to_supabase(
                 "frame_height": detection.get(
                     "frame_height"
                 ),
-                "status": status,
+                "status": database_status,
                 "snapshot_path": None,
                 "detected_at": detected_at,
             }
@@ -1025,6 +1223,7 @@ def write_detection_to_supabase(
         print(
             "Supabase saved | "
             f"station={station_id} "
+            f"status={status} "
             f"level={level_m:.2f}m "
             f"coverage={water_coverage:.1f}% "
             f"confidence={confidence:.2f}"
@@ -1073,6 +1272,8 @@ def camera_capture_loop() -> None:
                         "Camera stopped returning frames."
                     )
 
+                frame = normalize_camera_frame(frame)
+
                 latest_frame_at = datetime.now(
                     timezone.utc
                 ).isoformat()
@@ -1120,6 +1321,11 @@ def camera_capture_loop() -> None:
                     water_mask,
                 )
 
+                annotated_frame = np.ascontiguousarray(
+                    annotated_frame,
+                    dtype=np.uint8,
+                )
+
                 encoded, jpeg_buffer = cv2.imencode(
                     ".jpg",
                     annotated_frame,
@@ -1164,6 +1370,7 @@ def camera_capture_loop() -> None:
         except Exception as error:
             error_message = str(error)
 
+            traceback.print_exc()
             print(f"Camera error: {error_message}")
 
             update_camera_state(
@@ -1276,6 +1483,9 @@ def health():
                 supabase is not None
             ),
             "supabase_error": supabase_error,
+            "alert_cooldown_seconds": (
+                ALERT_COOLDOWN_SECONDS
+            ),
         }
     )
 
@@ -1364,6 +1574,9 @@ if __name__ == "__main__":
     print(
         "Detection: "
         f"http://localhost:{FLASK_PORT}/latest_detection"
+    )
+    print(
+        f"Alert cooldown: {ALERT_COOLDOWN_SECONDS}s"
     )
     print("=" * 62)
 
