@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 
+import BrandLogo from "./BrandLogo";
 import { useAuth } from "../context/AuthContext";
 
 const roleMenus = {
@@ -85,35 +86,11 @@ const roleMenus = {
 
 function AquaGuardLogo() {
   return (
-    <div className="sidebar-logo">
-      <svg
-        width="30"
-        height="30"
-        viewBox="0 0 32 32"
-        fill="none"
-        aria-hidden="true"
-      >
-        <circle
-          cx="16"
-          cy="16"
-          r="14"
-          stroke="#2563eb"
-          strokeWidth="2"
-        />
-        <path
-          d="M8 20c2-4 4-8 8-10 4 2 6 6 8 10"
-          stroke="#2563eb"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <circle cx="16" cy="20" r="3" fill="#2563eb" />
-      </svg>
-
-      <div>
-        <span className="logo-title">AQUAGUARD</span>
-        <span className="logo-sub">Flood Monitoring System</span>
-      </div>
-    </div>
+    <BrandLogo
+      className="sidebar-logo"
+      markClassName="sidebar-logo-mark"
+      subtitle="Flood Monitoring System"
+    />
   );
 }
 

@@ -4,22 +4,27 @@
 
 .auth-page {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: #f0f6ff;
+  display: grid;
+  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 48px 24px;
+  background:
+    linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(37, 99, 235, 0.08)),
+    #eef6ff;
   font-family: "Segoe UI", sans-serif;
   color: #111111;
 }
 
 .auth-card {
+  position: relative;
+  justify-self: center;
   width: 100%;
-  max-width: 440px;
-  padding: 40px 36px;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 14px 40px rgba(37, 99, 235, 0.08);
+  max-width: 460px;
+  padding: 44px 36px 38px;
+  border: 1px solid rgba(37, 99, 235, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
 }
 
 .auth-logo {
@@ -27,51 +32,72 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 28px;
+  margin-bottom: 30px;
   color: #2563eb;
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 800;
+}
+
+.auth-logo-mark {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.auth-logo-mark.brand-logo-image {
+  width: min(230px, 72%);
+  height: auto;
+  max-height: 118px;
+}
+
+.auth-logo .brand-logo-title {
+  display: block;
 }
 
 .auth-card h1 {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   text-align: center;
-  font-size: 1.4rem;
+  font-size: 1.55rem;
+  line-height: 1.2;
 }
 
 .auth-subtitle {
-  margin: 0 0 28px;
-  color: #667085;
+  margin: 0 0 30px;
+  color: #475467;
   text-align: center;
-  font-size: 0.88rem;
+  font-size: 0.92rem;
 }
 
 .auth-form label {
   display: block;
-  margin-bottom: 6px;
-  color: #444444;
+  margin-bottom: 7px;
+  color: #243244;
   font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .auth-form input,
 .auth-form select {
   width: 100%;
   margin-bottom: 18px;
-  padding: 11px 14px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 13px 15px;
+  border: 1px solid #d7e3f4;
+  border-radius: 10px;
   outline: none;
   color: #111111;
-  background: #e8f0fe;
+  background: #edf4ff;
   font-size: 0.95rem;
   transition:
     border-color 0.2s ease,
+    background 0.2s ease,
     box-shadow 0.2s ease;
 }
 
 .auth-form input:focus,
 .auth-form select:focus {
   border-color: #2563eb;
+  background: #ffffff;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
@@ -79,20 +105,24 @@
   position: relative;
   z-index: 2;
   width: 100%;
-  padding: 12px;
+  min-height: 46px;
+  padding: 12px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #ffffff;
-  background: #2563eb;
+  background: linear-gradient(135deg, #2563eb, #0891b2);
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
   pointer-events: auto;
-  transition: background 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .auth-button:hover:not(:disabled) {
-  background: #1d4ed8;
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24);
+  transform: translateY(-1px);
 }
 
 .auth-button:disabled {
@@ -101,7 +131,7 @@
 }
 
 .auth-footer {
-  margin-top: 18px;
+  margin-top: 22px;
   color: #666666;
   text-align: center;
   font-size: 0.85rem;
@@ -136,12 +166,12 @@
 @media (max-width: 480px) {
   .auth-page {
     align-items: flex-start;
-    padding: 20px 0;
+    padding: 22px 12px;
   }
 
   .auth-card {
     max-width: 100%;
-    padding: 32px 20px;
-    border-radius: 0;
+    padding: 34px 22px;
+    border-radius: 16px;
   }
 }

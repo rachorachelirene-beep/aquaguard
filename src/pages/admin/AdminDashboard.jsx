@@ -52,7 +52,7 @@ function getStatus(level, warning, critical) {
       header: "CRITICAL",
       label: "STAY ALERT",
       className: "red",
-      color: "#ef4444",
+      color: "#d84a4a",
       sub: `THRESHOLD: ${critical.toFixed(2)}M`,
     };
   }
@@ -63,7 +63,7 @@ function getStatus(level, warning, critical) {
       header: "WARNING",
       label: "WARNING",
       className: "orange",
-      color: "#f97316",
+      color: "#c77b2a",
       sub: `THRESHOLD: ${warning.toFixed(2)}M`,
     };
   }
@@ -73,7 +73,7 @@ function getStatus(level, warning, critical) {
     header: "NORMAL",
     label: "NORMAL",
     className: "green",
-    color: "#4ade80",
+    color: "#2f9e69",
     sub: "WITHIN SAFE RANGE",
   };
 }
@@ -132,38 +132,38 @@ function StationMap() {
         cx="40"
         cy="40"
         r="20"
-        stroke="#2563eb"
+        stroke="#1f6f8b"
         strokeWidth="1.5"
         strokeDasharray="4 3"
       />
-      <circle cx="40" cy="40" r="6" fill="#2563eb" />
+      <circle cx="40" cy="40" r="6" fill="#1f6f8b" />
       <line
         x1="40"
         y1="20"
         x2="40"
         y2="34"
-        stroke="#2563eb"
+        stroke="#1f6f8b"
       />
       <line
         x1="40"
         y1="46"
         x2="40"
         y2="60"
-        stroke="#2563eb"
+        stroke="#1f6f8b"
       />
       <line
         x1="20"
         y1="40"
         x2="34"
         y2="40"
-        stroke="#2563eb"
+        stroke="#1f6f8b"
       />
       <line
         x1="46"
         y1="40"
         x2="60"
         y2="40"
-        stroke="#2563eb"
+        stroke="#1f6f8b"
       />
     </svg>
   );
@@ -179,7 +179,7 @@ function LiveFeedIcon() {
       opacity=".18"
       aria-hidden="true"
     >
-      <rect width="80" height="80" rx="8" fill="#2563eb" />
+      <rect width="80" height="80" rx="8" fill="#1f6f8b" />
       <path
         d="M10 55 Q20 35 40 40 Q60 45 70 25"
         stroke="#fff"
@@ -594,12 +594,12 @@ function AdminDashboardContent() {
                 style={{
                   color:
                     yoloRisk == null
-                      ? "#445"
+                      ? "#64748b"
                       : yoloRisk > 70
-                        ? "#ef4444"
+                        ? "#d84a4a"
                         : yoloRisk > 40
-                          ? "#f97316"
-                          : "#4ade80",
+                          ? "#c77b2a"
+                          : "#2f9e69",
                   fontSize: yoloRisk == null ? "1rem" : undefined,
                 }}
               >
@@ -718,10 +718,10 @@ function AdminDashboardContent() {
                   );
                   const color =
                     level >= criticalLevel
-                      ? "#ef4444"
+                      ? "#d84a4a"
                       : level >= warningLevel
-                        ? "#f97316"
-                        : "#2563eb";
+                        ? "#c77b2a"
+                        : "#1f6f8b";
 
                   return (
                     <div

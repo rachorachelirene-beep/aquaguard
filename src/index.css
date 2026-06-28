@@ -43,7 +43,9 @@ a:hover {
 .auth-page {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 48px 24px;
 }
 
 .auth-panel {
