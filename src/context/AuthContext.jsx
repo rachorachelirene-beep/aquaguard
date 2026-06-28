@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseConfigError } from "../lib/supabase";
 
 const AuthContext = createContext(null);
 
@@ -43,6 +43,12 @@ export function AuthProvider({ children }) {
   const [profileError, setProfileError] = useState("");
 
   const loadProfile = useCallback(async (currentUser) => {
+    if (!supabase) {
+      setProfile(null);
+      setProfileError(supabaseConfigError);
+      return null;
+    }
+
     if (!currentUser) {
       setProfile(null);
       setProfileError("");
@@ -68,6 +74,15 @@ export function AuthProvider({ children }) {
     let isMounted = true;
 
     async function loadSession() {
+      if (!supabase) {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setProfileError(supabaseConfigError);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
 
       const { data, error } = await supabase.auth.getSession();
@@ -123,7 +138,7 @@ export function AuthProvider({ children }) {
   }, [loadProfile, user]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    await supabase?.auth.signOut();
     setSession(null);
     setUser(null);
     setProfile(null);
@@ -154,6 +169,15 @@ export function AuthProvider({ children }) {
     refreshProfile,
     signOut,
   ]);
+
+  if (supabaseConfigError) {
+    return (
+      <main className="route-state">
+        <h1>AquaGuard setup needed</h1>
+        <p>{supabaseConfigError}</p>
+      </main>
+    );
+  }
 
   return (
     <AuthContext.Provider value={value}>

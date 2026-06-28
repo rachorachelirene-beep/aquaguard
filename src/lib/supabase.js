@@ -1,18 +1,28 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-const supabasePublishableKey =
+const supabaseKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (!supabaseUrl || !supabasePublishableKey) {
-  throw new Error(
-    "Missing Supabase environment variables."
-  );
+export const supabaseConfigError =
+  !supabaseUrl || !supabaseKey
+    ? "Missing Supabase environment variables. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file, then restart npm run dev."
+    : "";
+
+if (supabaseConfigError) {
+  console.error("Missing Supabase environment variables.", {
+    hasSupabaseUrl: Boolean(supabaseUrl),
+    hasSupabaseKey: Boolean(supabaseKey),
+  });
 }
 
-export const supabase = createClient(
-  supabaseUrl,
-  supabasePublishableKey
-);
+export const supabase = supabaseConfigError
+  ? null
+  : createClient(
+      supabaseUrl,
+      supabaseKey
+    );
+
+export default supabase;
