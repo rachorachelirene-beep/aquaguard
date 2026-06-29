@@ -27,8 +27,22 @@ import CameraSettings from "./pages/admin/CameraSettings";
 import Users from "./pages/admin/Users";
 
 import OfficerDashboard from "./pages/officer/OfficerDashboard";
+import OfficerAlerts from "./pages/officer/OfficerAlerts";
+import OfficerAnnouncements from "./pages/officer/OfficerAnnouncements";
+import OfficerCoordinate from "./pages/officer/OfficerCoordinate";
+import OfficerEvacuationAdvisories from "./pages/officer/OfficerEvacuationAdvisories";
+import OfficerReports from "./pages/officer/OfficerReports";
+import OfficerWaterLevelHistory from "./pages/officer/OfficerWaterLevelHistory";
+import ResponderAffectedAreas from "./pages/responder/ResponderAffectedAreas";
+import ResponderCoordinate from "./pages/responder/ResponderCoordinate";
 import ResponderDashboard from "./pages/responder/ResponderDashboard";
+import ResponderEmergencyAlerts from "./pages/responder/ResponderEmergencyAlerts";
+import ResponderReports from "./pages/responder/ResponderReports";
+import ResponderResponseLogs from "./pages/responder/ResponderResponseLogs";
+import ResidentAlerts from "./pages/resident/ResidentAlerts";
+import ResidentAnnouncements from "./pages/resident/ResidentAnnouncements";
 import ResidentDashboard from "./pages/resident/ResidentDashboard";
+import ResidentSafetyTips from "./pages/resident/ResidentSafetyTips";
 
 export default function App() {
   return (
@@ -178,6 +192,72 @@ export default function App() {
             }
           />
 
+          <Route
+            path="/officer/water-level-history"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerWaterLevelHistory />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/officer/alerts"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerAlerts />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/officer/announcements"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerAnnouncements />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/officer/evacuation-advisories"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerEvacuationAdvisories />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/officer/reports"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerReports />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/officer/coordinate"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerCoordinate />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Disaster responder routes */}
           <Route
             path="/responder/dashboard"
@@ -190,12 +270,94 @@ export default function App() {
             }
           />
 
+          <Route
+            path="/responder/emergency-alerts"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderEmergencyAlerts />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/affected-areas"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderAffectedAreas />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/response-logs"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderResponseLogs />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/reports"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderReports />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/coordinate"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderCoordinate />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Resident routes */}
           <Route
             path="/resident/dashboard"
             element={
               <ProtectedRoute allowedRoles={["resident"]}>
                 <ResidentDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/resident/alerts"
+            element={
+              <ProtectedRoute allowedRoles={["resident"]}>
+                <ResidentAlerts />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/resident/announcements"
+            element={
+              <ProtectedRoute allowedRoles={["resident"]}>
+                <ResidentAnnouncements />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/resident/safety-tips"
+            element={
+              <ProtectedRoute allowedRoles={["resident"]}>
+                <ResidentSafetyTips />
               </ProtectedRoute>
             }
           />

@@ -947,6 +947,413 @@
   color: var(--aq-primary);
 }
 
+.act-status.orange {
+  color: var(--aq-warning);
+}
+
+.act-status.red {
+  color: var(--aq-danger);
+}
+
+.officer-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--aq-border);
+}
+
+.officer-list-item:last-child {
+  border-bottom: 0;
+}
+
+.officer-list-item strong {
+  color: var(--aq-text);
+  font-size: 0.86rem;
+}
+
+.officer-list-item span {
+  color: var(--aq-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.officer-list-item small {
+  color: var(--aq-muted);
+  font-size: 0.68rem;
+}
+
+.officer-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.officer-page {
+  display: grid;
+  gap: 16px;
+}
+
+.officer-stat-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+}
+
+.officer-coordinate-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.resident-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resident-dashboard {
+  display: grid;
+  gap: 16px;
+}
+
+.resident-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--aq-border);
+  border-radius: 14px;
+  background: var(--aq-surface);
+}
+
+.resident-status-banner h2 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.resident-status-banner p {
+  margin: 0 0 5px;
+  color: var(--aq-text);
+  font-size: 0.9rem;
+}
+
+.resident-status-banner span {
+  color: var(--aq-muted);
+  font-size: 0.78rem;
+}
+
+.resident-status-icon {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.resident-status-critical {
+  border-color: rgba(216, 74, 74, 0.35);
+  background: var(--aq-danger-soft);
+}
+
+.resident-status-critical h2 {
+  color: var(--aq-danger);
+}
+
+.resident-status-critical .resident-status-icon {
+  background: var(--aq-danger);
+}
+
+.resident-status-warning {
+  border-color: rgba(199, 123, 42, 0.35);
+  background: var(--aq-warning-soft);
+}
+
+.resident-status-warning h2 {
+  color: var(--aq-warning);
+}
+
+.resident-status-warning .resident-status-icon {
+  background: var(--aq-warning);
+}
+
+.resident-status-normal {
+  border-color: rgba(47, 158, 105, 0.3);
+  background: var(--aq-success-soft);
+}
+
+.resident-status-normal h2 {
+  color: var(--aq-success);
+}
+
+.resident-status-normal .resident-status-icon {
+  background: var(--aq-success);
+}
+
+.resident-status-unknown {
+  background: var(--aq-surface);
+}
+
+.resident-status-unknown h2 {
+  color: var(--aq-muted);
+}
+
+.resident-status-unknown .resident-status-icon {
+  background: var(--aq-muted);
+}
+
+.resident-station-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resident-station-card {
+  cursor: default;
+}
+
+.resident-station-card:hover {
+  transform: none;
+}
+
+.resident-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.responder-dashboard-stations {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.responder-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.responder-mini-chart {
+  height: 120px;
+}
+
+.responder-inline-button {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.resident-alert-grid {
+  margin-bottom: 12px;
+}
+
+.resident-advisory-card {
+  border-color: rgba(216, 74, 74, 0.24);
+  background: #fffafa;
+}
+
+.resident-advisory-item p {
+  margin: 4px 0 0;
+  color: var(--aq-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.resident-view-link {
+  display: inline-flex;
+  margin-top: 12px;
+  color: var(--aq-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.resident-view-link:hover {
+  text-decoration: underline;
+}
+
+.resident-list {
+  display: grid;
+  gap: 4px;
+}
+
+.resident-list-item {
+  padding: 14px 0;
+}
+
+.resident-tip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.resident-tip-card {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--aq-border);
+  border-radius: 12px;
+  background: var(--aq-surface-soft);
+}
+
+.resident-tip-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #ffffff;
+  background: var(--aq-primary);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.resident-tip-card strong {
+  color: var(--aq-text);
+  font-size: 0.95rem;
+}
+
+.resident-tip-card span {
+  color: var(--aq-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.lm-dot.green {
+  background: var(--aq-success);
+  box-shadow: 0 0 8px rgba(47, 158, 105, 0.45);
+}
+
+.officer-title-action,
+.officer-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.officer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.officer-search {
+  min-width: min(100%, 320px);
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  padding: 0 12px;
+  border: 1px solid var(--aq-border-strong);
+  border-radius: 8px;
+  color: var(--aq-muted);
+  background: var(--aq-surface-soft);
+}
+
+.officer-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  color: var(--aq-text);
+  background: transparent;
+  font: inherit;
+}
+
+.officer-search:focus-within {
+  border-color: var(--aq-primary);
+}
+
+.officer-count {
+  margin-left: auto;
+  color: var(--aq-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.officer-filter-select {
+  width: auto;
+  min-width: 140px;
+  height: 40px;
+  padding-block: 0;
+}
+
+.officer-table-message {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.officer-table-subtext {
+  max-width: 280px;
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--aq-muted);
+  font-size: 0.7rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.officer-table-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.officer-alert-actions {
+  margin-top: 12px;
+}
+
+.officer-alert-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.officer-table-empty {
+  padding: 28px !important;
+  color: var(--aq-muted) !important;
+  text-align: center !important;
+}
+
+.officer-confirm-body {
+  padding: 20px;
+}
+
+.officer-confirm-body p {
+  margin: 0;
+  color: var(--aq-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.officer-confirm-body strong {
+  color: var(--aq-text);
+}
+
+.officer-spin {
+  animation: officer-spin 0.8s linear infinite;
+}
+
+@keyframes officer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .action-btns {
   display: flex;
   flex-direction: column;
@@ -1061,6 +1468,12 @@
   border: 1px solid #ead4b9;
   color: #9b5d20;
   background: var(--aq-warning-soft);
+}
+
+.badge-blue {
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  background: #eff6ff;
 }
 
 .modal-overlay {
@@ -1933,6 +2346,12 @@ textarea.form-input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .resident-card-grid,
+  .resident-tip-grid,
+  .resident-station-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .bottom-row {
     grid-template-columns: 1fr 1fr;
   }
@@ -2041,8 +2460,18 @@ textarea.form-input {
 
   .lm-station-cards,
   .lm-right,
-  .lm-health-grid {
+  .lm-health-grid,
+  .resident-card-grid,
+  .resident-tip-grid,
+  .resident-station-grid,
+  .resident-dashboard-grid,
+  .responder-chart-grid {
     grid-template-columns: 1fr;
+  }
+
+  .resident-status-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .lm-viewport {

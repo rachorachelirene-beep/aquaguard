@@ -139,6 +139,8 @@ export default function Navbar({
           to={
             profile?.role === "admin"
               ? "/admin/alerts"
+              : profile?.role === "barangay_officer"
+                ? "/officer/alerts"
               : profile?.role === "disaster_responder"
                 ? "/responder/emergency-alerts"
                 : "/resident/alerts"

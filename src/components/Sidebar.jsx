@@ -35,6 +35,7 @@ const roleMenus = {
       to: "/officer/water-level-history",
       icon: "↻",
     },
+    { label: "Alerts", to: "/officer/alerts", icon: "⚠" },
     { label: "Reports", to: "/officer/reports", icon: "▣" },
     {
       label: "Announcements",
