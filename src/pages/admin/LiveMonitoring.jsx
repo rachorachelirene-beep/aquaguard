@@ -17,8 +17,38 @@ import {
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { supabase } from "../../lib/supabase";
 
-const cameraApiUrl =
+const defaultCameraApiUrl =
   import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000";
+const cameraApiStorageKey = "aquaguard.detectorApiUrl";
+
+function normalizeCameraApiUrl(value, fallback = defaultCameraApiUrl) {
+  const trimmed = String(value ?? "").trim().replace(/\/+$/, "");
+
+  if (!trimmed) {
+    return fallback;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
+}
+
+function getStoredCameraApiUrl() {
+  if (typeof window === "undefined") {
+    return defaultCameraApiUrl;
+  }
+
+  try {
+    return normalizeCameraApiUrl(
+      window.localStorage.getItem(cameraApiStorageKey) ?? defaultCameraApiUrl
+    );
+  } catch (error) {
+    console.warn("Unable to read detector URL override:", error);
+    return defaultCameraApiUrl;
+  }
+}
 
 function toNumber(value, fallback = null) {
   const parsed = Number(value);
@@ -210,6 +240,12 @@ function LiveMonitoringContent() {
   const [streamVersion, setStreamVersion] = useState(1);
   const [sendingAlert, setSendingAlert] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [cameraApiBaseUrl, setCameraApiBaseUrl] = useState(() =>
+    getStoredCameraApiUrl()
+  );
+  const [cameraApiInput, setCameraApiInput] = useState(() =>
+    getStoredCameraApiUrl()
+  );
 
   const loadMonitoring = useCallback(async () => {
     const [stationsResult, readingsResult] = await Promise.all([
@@ -450,8 +486,8 @@ function LiveMonitoringContent() {
   );
   const detectorFresh = detectorAge != null && detectorAge <= 5;
   const streamUrl = useMemo(
-    () => buildStreamUrl(cameraApiUrl, selectedStationId, streamVersion),
-    [selectedStationId, streamVersion]
+    () => buildStreamUrl(cameraApiBaseUrl, selectedStationId, streamVersion),
+    [cameraApiBaseUrl, selectedStationId, streamVersion]
   );
   const streamKey = `${selectedStationId}:${streamVersion}`;
   const streamState =
@@ -472,6 +508,36 @@ function LiveMonitoringContent() {
 
   function handleFullscreen() {
     feedRef.current?.requestFullscreen?.();
+  }
+
+  function handleDetectorUrlSubmit(event) {
+    event.preventDefault();
+
+    const nextUrl = normalizeCameraApiUrl(cameraApiInput);
+
+    try {
+      window.localStorage.setItem(cameraApiStorageKey, nextUrl);
+    } catch (error) {
+      console.warn("Unable to save detector URL override:", error);
+    }
+
+    setCameraApiBaseUrl(nextUrl);
+    setCameraApiInput(nextUrl);
+    setStreamVersion((version) => version + 1);
+    setFlash({ type: "success", text: "Detector URL updated." });
+  }
+
+  function handleDetectorUrlReset() {
+    try {
+      window.localStorage.removeItem(cameraApiStorageKey);
+    } catch (error) {
+      console.warn("Unable to reset detector URL override:", error);
+    }
+
+    setCameraApiBaseUrl(defaultCameraApiUrl);
+    setCameraApiInput(defaultCameraApiUrl);
+    setStreamVersion((version) => version + 1);
+    setFlash({ type: "success", text: "Detector URL reset." });
   }
 
   async function handleSendAlert() {
@@ -873,6 +939,31 @@ function LiveMonitoringContent() {
                         </strong>
                       </div>
                     </div>
+                    <form
+                      className="lm-detector-form"
+                      onSubmit={handleDetectorUrlSubmit}
+                    >
+                      <label htmlFor="detector-url">Detector URL</label>
+                      <div className="lm-detector-controls">
+                        <input
+                          id="detector-url"
+                          type="url"
+                          value={cameraApiInput}
+                          placeholder="https://detector.example.com"
+                          onChange={(event) =>
+                            setCameraApiInput(event.target.value)
+                          }
+                        />
+                        <button type="submit">Save</button>
+                        <button
+                          type="button"
+                          onClick={handleDetectorUrlReset}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <span>{cameraApiBaseUrl}</span>
+                    </form>
                   </div>
 
                   <div className="lm-info-card">

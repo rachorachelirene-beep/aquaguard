@@ -2206,6 +2206,70 @@ textarea.form-input {
   text-transform: capitalize;
 }
 
+.lm-detector-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lm-detector-form label {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+}
+
+.lm-detector-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 7px;
+}
+
+.lm-detector-controls input {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  outline: none;
+  color: #111111;
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.lm-detector-controls input:focus {
+  border-color: #2563eb;
+}
+
+.lm-detector-controls button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 8px;
+  color: #444444;
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lm-detector-controls button[type="submit"] {
+  border-color: transparent;
+  color: #ffffff;
+  background: #2563eb;
+}
+
+.lm-detector-form > span {
+  overflow: hidden;
+  color: #667085;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lm-weather-lines {
   display: flex;
   flex-direction: column;
@@ -2491,6 +2555,10 @@ textarea.form-input {
   .lm-feed-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .lm-detector-controls {
+    grid-template-columns: 1fr;
   }
 }
 
