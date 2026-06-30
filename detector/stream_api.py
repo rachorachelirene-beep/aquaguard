@@ -51,6 +51,11 @@ CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "1280"))
 CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "720"))
 CAMERA_FPS = int(os.getenv("CAMERA_FPS", "30"))
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "80"))
+STREAM_FPS = max(1, int(os.getenv("STREAM_FPS", "12")))
+
+PROCESSING_WIDTH = int(os.getenv("PROCESSING_WIDTH", str(CAMERA_WIDTH)))
+PROCESSING_HEIGHT = int(os.getenv("PROCESSING_HEIGHT", str(CAMERA_HEIGHT)))
+OPENCV_THREADS = max(1, int(os.getenv("OPENCV_THREADS", "1")))
 
 CAMERA_USERNAME = os.getenv(
     "CAMERA_USERNAME",
@@ -86,10 +91,22 @@ YOLO_CONFIDENCE = float(
     os.getenv("YOLO_CONFIDENCE", "0.35")
 )
 
+YOLO_IMAGE_SIZE = max(
+    160,
+    int(os.getenv("YOLO_IMAGE_SIZE", "416")),
+)
+
 YOLO_FRAME_INTERVAL = max(
     1,
     int(os.getenv("YOLO_FRAME_INTERVAL", "3")),
 )
+
+YOLO_MAX_DETECTIONS = max(
+    1,
+    int(os.getenv("YOLO_MAX_DETECTIONS", "3")),
+)
+
+YOLO_DEVICE = os.getenv("YOLO_DEVICE", "cpu").strip()
 
 MIN_LEVEL_M = float(os.getenv("MIN_LEVEL_M", "0.00"))
 MAX_LEVEL_M = float(os.getenv("MAX_LEVEL_M", "3.00"))
@@ -139,6 +156,8 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
     "flags;low_delay|"
     "max_delay;0"
 )
+
+cv2.setNumThreads(OPENCV_THREADS)
 
 
 # =========================================================
@@ -348,6 +367,33 @@ def normalize_camera_frame(frame: np.ndarray) -> np.ndarray:
     )
 
 
+def resize_frame_for_processing(frame: np.ndarray) -> np.ndarray:
+    """Cap frame size before annotation/YOLO to keep low-end PCs responsive."""
+
+    if PROCESSING_WIDTH <= 0 or PROCESSING_HEIGHT <= 0:
+        return frame
+
+    frame_height, frame_width = frame.shape[:2]
+
+    scale = min(
+        PROCESSING_WIDTH / max(1, frame_width),
+        PROCESSING_HEIGHT / max(1, frame_height),
+        1.0,
+    )
+
+    if scale >= 0.999:
+        return frame
+
+    target_width = max(1, int(frame_width * scale))
+    target_height = max(1, int(frame_height * scale))
+
+    return cv2.resize(
+        frame,
+        (target_width, target_height),
+        interpolation=cv2.INTER_AREA,
+    )
+
+
 def build_rtsp_url() -> str:
     if not CAMERA_USERNAME:
         raise RuntimeError("CAMERA_USERNAME is missing.")
@@ -491,6 +537,21 @@ def open_camera() -> cv2.VideoCapture:
             1,
         )
 
+        capture.set(
+            cv2.CAP_PROP_FRAME_WIDTH,
+            CAMERA_WIDTH,
+        )
+
+        capture.set(
+            cv2.CAP_PROP_FRAME_HEIGHT,
+            CAMERA_HEIGHT,
+        )
+
+        capture.set(
+            cv2.CAP_PROP_FPS,
+            CAMERA_FPS,
+        )
+
         return capture
 
     raise RuntimeError(
@@ -632,17 +693,28 @@ def run_yolo_detection(
 
     safe_frame = normalize_camera_frame(frame)
 
-    prediction = yolo_model.predict(
-        source=np.ascontiguousarray(
+    flood_class_ids = get_flood_class_ids()
+
+    predict_options = {
+        "source": np.ascontiguousarray(
             safe_frame.copy(),
             dtype=np.uint8,
         ),
-        conf=YOLO_CONFIDENCE,
-        verbose=False,
+        "conf": YOLO_CONFIDENCE,
+        "imgsz": YOLO_IMAGE_SIZE,
+        "max_det": YOLO_MAX_DETECTIONS,
+        "classes": list(flood_class_ids),
+        "verbose": False,
+    }
+
+    if YOLO_DEVICE:
+        predict_options["device"] = YOLO_DEVICE
+
+    prediction = yolo_model.predict(
+        **predict_options,
     )[0]
 
     water_mask = empty_mask.copy()
-    flood_class_ids = get_flood_class_ids()
 
     confidence_values: list[float] = []
     objects: list[dict] = []
@@ -1249,6 +1321,7 @@ def camera_capture_loop() -> None:
 
     frame_counter = 0
     last_database_write = 0.0
+    target_frame_delay = 1.0 / STREAM_FPS
 
     while not stop_event.is_set():
         capture: cv2.VideoCapture | None = None
@@ -1265,6 +1338,7 @@ def camera_capture_loop() -> None:
             update_camera_state(True)
 
             while not stop_event.is_set():
+                loop_started = time.perf_counter()
                 success, frame = capture.read()
 
                 if not success or frame is None:
@@ -1273,6 +1347,7 @@ def camera_capture_loop() -> None:
                     )
 
                 frame = normalize_camera_frame(frame)
+                frame = resize_frame_for_processing(frame)
 
                 latest_frame_at = datetime.now(
                     timezone.utc
@@ -1366,6 +1441,12 @@ def camera_capture_loop() -> None:
                     last_database_write = current_time
 
                 update_camera_state(True)
+
+                elapsed = time.perf_counter() - loop_started
+                sleep_for = target_frame_delay - elapsed
+
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
 
         except Exception as error:
             error_message = str(error)
