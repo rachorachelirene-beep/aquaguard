@@ -43,7 +43,7 @@ export default function BrandLogo({
       {!logoFailed ? (
         <img
           className={`${markClassName} brand-logo-image`}
-          src="/logo.png"
+          src="/logo-transparent.png"
           alt=""
           aria-hidden="true"
           onError={() => setLogoFailed(true)}
