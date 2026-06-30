@@ -3,6 +3,7 @@ import { Plus, RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 import {
   formatDateTime,
@@ -167,6 +168,7 @@ export default function ResponderEmergencyAlerts() {
     }
 
     setAlerts((current) => current.filter((item) => item.id !== alert.id));
+    notifyAlertsUpdated();
     setFlash({ type: "success", text: "Alert resolved." });
   }
 

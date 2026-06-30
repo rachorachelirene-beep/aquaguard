@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../../context/AuthContext";
+import { ALERTS_UPDATED_EVENT } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 import Navbar from "../Navbar";
 import Sidebar from "../Sidebar";
@@ -28,7 +29,7 @@ export default function DashboardLayout({
   const [currentTime, setCurrentTime] = useState(() =>
     formatSidebarTime(new Date())
   );
-  const [activeAlerts, setActiveAlerts] = useState(0);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -41,27 +42,35 @@ export default function DashboardLayout({
   useEffect(() => {
     let active = true;
 
-    async function loadAlertCount() {
+    async function loadUnreadAlertCount() {
       const { count, error } = await supabase
         .from("alerts")
         .select("id", { count: "exact", head: true })
-        .eq("is_resolved", false)
-        .in("type", ["critical", "warning"]);
+        .eq("is_read", false);
 
       if (!active) {
         return;
       }
 
       if (!error) {
-        setActiveAlerts(count ?? 0);
+        setUnreadAlerts(count ?? 0);
       }
     }
 
-    loadAlertCount();
-    const interval = window.setInterval(loadAlertCount, 30000);
+    loadUnreadAlertCount();
+    window.addEventListener(
+      ALERTS_UPDATED_EVENT,
+      loadUnreadAlertCount
+    );
+
+    const interval = window.setInterval(loadUnreadAlertCount, 30000);
 
     return () => {
       active = false;
+      window.removeEventListener(
+        ALERTS_UPDATED_EVENT,
+        loadUnreadAlertCount
+      );
       window.clearInterval(interval);
     };
   }, []);
@@ -85,7 +94,7 @@ export default function DashboardLayout({
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        activeAlerts={activeAlerts}
+        unreadAlerts={unreadAlerts}
         currentTime={currentTime}
       />
 
@@ -98,7 +107,7 @@ export default function DashboardLayout({
           }
           showSearch={showAdminTools}
           showWeather={showAdminTools}
-          activeAlerts={activeAlerts}
+          unreadAlerts={unreadAlerts}
         />
 
         {children}

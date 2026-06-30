@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCheck, Eye, EyeOff, RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 
 function formatDateTime(value) {
@@ -175,6 +176,8 @@ export default function OfficerAlerts() {
         item.id === alert.id ? { ...item, ...changes } : item
       )
     );
+
+    notifyAlertsUpdated();
     setFlash({ type: "success", text: successText });
   }
 

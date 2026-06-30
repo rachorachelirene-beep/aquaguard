@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 
 import "./Alerts.css";
@@ -396,6 +397,7 @@ export default function Alerts() {
         )
       );
 
+      notifyAlertsUpdated();
       setSuccessMessage(successText);
     } catch (error) {
       console.error(
@@ -451,6 +453,7 @@ export default function Alerts() {
         }))
       );
 
+      notifyAlertsUpdated();
       setSuccessMessage(
         "All alerts were marked as read."
       );
@@ -505,6 +508,7 @@ export default function Alerts() {
 
       setAlertToDelete(null);
 
+      notifyAlertsUpdated();
       setSuccessMessage(
         "Alert deleted successfully."
       );

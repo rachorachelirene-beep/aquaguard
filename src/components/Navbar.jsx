@@ -34,7 +34,7 @@ export default function Navbar({
   onToggleSidebar,
   showSearch = true,
   showWeather = true,
-  activeAlerts = 0,
+  unreadAlerts = 0,
 }) {
   const { profile } = useAuth();
   const [weather, setWeather] = useState(null);
@@ -149,7 +149,7 @@ export default function Navbar({
           title="Alerts"
         >
           ⚠
-          {activeAlerts > 0 && <span className="notif-dot" />}
+          {unreadAlerts > 0 && <span className="notif-dot" />}
         </Link>
 
         {profile?.role === "admin" && (

@@ -98,7 +98,7 @@ function AquaGuardLogo() {
 export default function Sidebar({
   open,
   onClose,
-  activeAlerts = 0,
+  unreadAlerts = 0,
   currentTime,
 }) {
   const navigate = useNavigate();
@@ -128,8 +128,8 @@ export default function Sidebar({
             >
               <span className="nav-icon">{item.icon}</span>
               <span>{item.label}</span>
-              {item.label.includes("Alerts") && activeAlerts > 0 && (
-                <span className="nav-badge">{activeAlerts}</span>
+              {item.label.includes("Alerts") && unreadAlerts > 0 && (
+                <span className="nav-badge">{unreadAlerts}</span>
               )}
             </NavLink>
           ))}
