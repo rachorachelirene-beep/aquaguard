@@ -4,7 +4,6 @@ import {
   Bell,
   Cloud,
   CloudRain,
-  Clock,
   Menu,
   Moon,
   Search,
@@ -152,10 +151,6 @@ export default function Navbar({
       )}
 
       <div className="topbar-right">
-        <span className="topbar-status-icon" title="System time">
-          <Clock size={19} />
-        </span>
-
         {showWeather && (
           <Link
             to="/admin/weather"
