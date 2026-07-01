@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AquaGuard - Live Monitoring</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts for Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS Setup -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#f7f9fb",
+                        "inverse-on-surface": "#eff1f3",
+                        "tertiary-fixed-dim": "#76d6d5",
+                        "on-background": "#191c1e",
+                        "surface-tint": "#525f77",
+                        "secondary": "#00677f",
+                        "surface-variant": "#e0e3e5",
+                        "on-secondary": "#ffffff",
+                        "background": "#f7f9fb",
+                        "surface-container-high": "#e6e8ea",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-container": "#289291",
+                        "outline": "#75777d",
+                        "on-primary-fixed": "#0e1c31",
+                        "on-primary-fixed-variant": "#3a475e",
+                        "primary-fixed": "#d6e3ff",
+                        "tertiary-container": "#002020",
+                        "surface-container": "#eceef0",
+                        "primary-fixed-dim": "#bac7e3",
+                        "secondary-fixed-dim": "#47d6ff",
+                        "on-error": "#ffffff",
+                        "on-secondary-fixed-variant": "#004e60",
+                        "primary-container": "#0e1c31",
+                        "on-tertiary-fixed-variant": "#004f4f",
+                        "outline-variant": "#c5c6cd",
+                        "on-primary": "#ffffff",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-surface": "#191c1e",
+                        "on-secondary-fixed": "#001f28",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-container": "#00d2ff",
+                        "on-primary-container": "#77849e",
+                        "tertiary": "#000000",
+                        "primary": "#000000",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadc",
+                        "on-surface-variant": "#44474d",
+                        "on-tertiary-fixed": "#002020",
+                        "surface-container-low": "#f2f4f6",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-container": "#00566a",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed": "#93f2f2",
+                        "inverse-primary": "#bac7e3",
+                        "inverse-surface": "#2d3133",
+                        "secondary-fixed": "#b6ebff",
+                        "surface-bright": "#f7f9fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "margin": "32px",
+                        "gutter": "24px",
+                        "xl": "32px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "md": "16px",
+                        "base": "4px",
+                        "2xl": "48px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "data-mono": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "title-lg": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "data-mono": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom Shadow for Level 1 Cards */
+        .shadow-card {
+            box-shadow: 0px 4px 20px rgba(11, 25, 46, 0.05);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md h-screen flex overflow-hidden">
+<!-- SideNavBar (from JSON) -->
+<!-- Applying structural logic: fixed left-0 top-0 h-full w-72 -->
+<nav class="fixed left-0 top-0 h-full w-72 bg-surface border-r border-outline-variant shadow-sm flex flex-col justify-between py-margin z-50 transition-all duration-300">
+<div class="px-lg flex flex-col gap-xl">
+<!-- Header Identity -->
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-lg bg-primary-container text-on-primary-container flex items-center justify-center font-bold">
+                    AQ
+                </div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface">AquaGuard</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Flood Monitoring System</p>
+</div>
+</div>
+<!-- Navigation Links -->
+<ul class="flex flex-col gap-xs">
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">dashboard</span> <span class="font-label-md text-label-md">Dashboard</span></a></li>
+<!-- ACTIVE TAB: Live Monitoring -->
+<li><a class="flex items-center gap-md bg-secondary-container text-on-secondary-container p-md rounded-lg font-bold" href="#"><span class="material-symbols-outlined fill">sensors</span> <span class="font-label-md text-label-md">Live Monitoring</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">history</span> <span class="font-label-md text-label-md">Water Level History</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">batch_prediction</span> <span class="font-label-md text-label-md">Prediction</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">cloud</span> <span class="font-label-md text-label-md">Weather</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">notifications_active</span> <span class="font-label-md text-label-md">Alerts</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">settings_input_component</span> <span class="font-label-md text-label-md">Monitoring Stations</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">description</span> <span class="font-label-md text-label-md">Reports</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">group</span> <span class="font-label-md text-label-md">Users</span></a></li>
+<li><a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">settings</span> <span class="font-label-md text-label-md">Settings</span></a></li>
+</ul>
+</div>
+<!-- Footer -->
+<div class="px-lg">
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg" href="#"><span class="material-symbols-outlined">logout</span> <span class="font-label-md text-label-md">Logout</span></a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<div class="flex-1 flex flex-col h-screen ml-72 relative">
+<!-- TopAppBar (from JSON) -->
+<header class="fixed top-0 flex justify-between items-center w-full px-lg h-20 ml-72 max-w-[calc(100%-18rem)] bg-surface/80 backdrop-blur-md border-b border-outline-variant z-40">
+<!-- Brand hidden per JSON instructions -->
+<div class="hidden font-title-lg text-title-lg text-secondary">AquaGuard</div>
+<div class="flex-1"></div> <!-- Spacer -->
+<!-- Actions -->
+<div class="flex items-center gap-md text-on-surface-variant">
+<button class="p-sm rounded-full hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined">schedule</span></button>
+<button class="p-sm rounded-full hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined">sensors</span></button>
+<button class="p-sm rounded-full hover:bg-surface-container-high transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full animate-pulse"></span>
+</button>
+<button class="p-sm rounded-full hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined">dark_mode</span></button>
+<div class="h-8 w-[1px] bg-outline-variant mx-sm"></div>
+<button class="w-10 h-10 rounded-full bg-surface-container overflow-hidden border border-outline-variant">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A clean, minimalist 3D render of an anonymous user avatar in a professional light blue tone, fitting a serious government application." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDXDqUZInrfZ4ppUNSjX8das8IIlROWdwoXp1WzI4M6-3QRj09tMP0GRhMEIt1ZzoyDGcAko3XaUnhG2S9hlndtR_0P4dshY0u7VdgwB_GsEnJ0eMDvNWPM2rUzVVoIhsHIlg3pRKAczDi6eqIL7pPvSMG4qbPPG_ZbgvScONLV31-f3zxc6blAk_FVY0iSDct_EwbC5W8b_nuxXhtvqHKdbnXj_MzXV9QkRA5v8s_RYiErLf_PqMD-7w8O5_dIOpRto7qF9xyRZ-w"/>
+</button>
+</div>
+</header>
+<!-- Page Content -->
+<main class="flex-1 overflow-y-auto p-gutter pt-[calc(80px+24px)] pb-24 bg-background">
+<div class="max-w-[1600px] mx-auto flex flex-col gap-gutter">
+<!-- Top Row: Main Camera Feed & Details -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
+<!-- Main Section: Large CCTV Camera Feed -->
+<div class="xl:col-span-8 bg-surface-container-lowest rounded-xl border border-outline-variant shadow-card overflow-hidden flex flex-col">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-bright">
+<h2 class="font-title-lg text-title-lg text-on-surface flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary">videocam</span>
+                                Station Bravo - River Front
+                            </h2>
+<div class="flex items-center gap-sm">
+<span class="flex h-2 w-2 relative">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+</span>
+<span class="font-label-sm text-label-sm text-error uppercase tracking-wider">Live</span>
+</div>
+</div>
+<!-- Video Container Wrapper -->
+<div class="relative w-full aspect-video bg-surface-container-highest group">
+<!-- Background Simulation Image -->
+<div class="absolute inset-0 bg-cover bg-center" data-alt="A realistic, high-resolution simulation of a CCTV camera feed monitoring a wide river front during daytime. The water looks slightly choppy but manageable against a concrete embankment. The aesthetic is practical, utilitarian, and high-contrast, fitting a government environmental monitoring dashboard in a clean, modern light-mode interface." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDRSPoZDigLs244iweaWkp968snSwpRXv3TLyY2dvvHBA_rve4HbywWxm6FV5HVyWY1CtZasX8mcbeOjJUb_-32HV7CvsnW6pMNVqLQCUOmQK8x2EFRGuhQ68AHXKqsz1sU5If8tf_eRRxzSYl3dnYaeDZOCsFN9qHS8LYzvIzKwRoWWhN-MmZiL62qNc07kBsTT-xF1Yw215KZjkvINl2he9sQbLRGC88bul3sYrzxTyWxSkA9EuKXQtUCmm84eFjXosJztGwKtS4')"></div>
+<!-- AI Bounding Box Overlay (Waterline Detection) -->
+<div class="absolute bottom-[20%] left-[10%] right-[15%] h-[30%] border-2 border-secondary-container bg-secondary-container/10 flex items-start justify-start p-2">
+<div class="bg-secondary-container text-on-secondary-container font-data-mono text-[10px] px-1 py-0.5 rounded-sm shadow-sm backdrop-blur-sm">
+                                    Waterline Mask: YOLOv8 (98.2%)
+                                </div>
+</div>
+<!-- OSD (On-Screen Display) Elements - Glassmorphism -->
+<div class="absolute top-4 left-4 right-4 flex justify-between pointer-events-none">
+<div class="bg-surface/70 backdrop-blur-md border border-outline/20 rounded px-3 py-1.5 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-[#10b981]"></span> <!-- Using safe hex for status indicator within graphic context, or fallback to theme if strictly text. Let's use custom class if needed. Wait, strict instructions: NO arbitrary hex. Changing to theme color. -->
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-data-mono text-data-mono text-on-surface">ONLINE • 1440p • 30fps</span>
+</div>
+<div class="bg-surface/70 backdrop-blur-md border border-outline/20 rounded px-3 py-1.5">
+<span class="font-data-mono text-data-mono text-on-surface" id="live-time">2023-10-27 14:32:05 UTC</span>
+</div>
+</div>
+<!-- Hover Controls - Bottom -->
+<div class="absolute bottom-4 left-4 right-4 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+<div class="flex gap-2">
+<button class="bg-primary-container text-on-primary-container hover:bg-surface-tint hover:text-white rounded-lg p-2 transition-colors flex items-center justify-center backdrop-blur-md">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+<button class="bg-surface/80 text-on-surface hover:bg-surface rounded-lg p-2 transition-colors flex items-center justify-center backdrop-blur-md border border-outline/20">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+<button class="bg-surface/80 text-on-surface hover:bg-surface rounded-lg p-2 transition-colors flex items-center justify-center backdrop-blur-md border border-outline/20">
+<span class="material-symbols-outlined">fullscreen</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Side Panel: Real-time Detection Details -->
+<div class="xl:col-span-4 flex flex-col gap-gutter">
+<!-- Key Stats Bento Box -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-card p-lg flex flex-col gap-lg">
+<h3 class="font-title-lg text-title-lg text-on-surface border-b border-outline-variant pb-sm">Detection Analysis</h3>
+<div class="grid grid-cols-2 gap-md">
+<div class="bg-surface-container-low rounded-lg p-md border border-outline-variant/50">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Current Level</p>
+<p class="font-display-lg text-display-lg text-primary">3.8<span class="font-body-lg text-body-lg text-on-surface-variant ml-1">m</span></p>
+</div>
+<div class="bg-surface-container-low rounded-lg p-md border border-outline-variant/50 flex flex-col justify-between">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Risk Status</p>
+<!-- Using theme derived colors for green-ish status -->
+<div class="inline-flex items-center gap-2 bg-tertiary-fixed text-on-tertiary-container px-3 py-1.5 rounded-full w-max">
+<span class="material-symbols-outlined fill text-[16px]">check_circle</span>
+<span class="font-label-md text-label-md font-bold">Normal</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-md pt-sm border-t border-outline-variant/50">
+<div class="flex justify-between items-center">
+<span class="font-body-md text-body-md text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">model_training</span> AI Confidence
+                                    </span>
+<span class="font-data-mono text-data-mono text-on-surface font-semibold">98.2%</span>
+</div>
+<div class="w-full bg-surface-variant rounded-full h-1.5">
+<div class="bg-secondary-container h-1.5 rounded-full" style="width: 98.2%"></div>
+</div>
+<div class="flex justify-between items-center mt-2">
+<span class="font-body-md text-body-md text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">memory</span> Model Status
+                                    </span>
+<span class="font-label-md text-label-md text-on-surface bg-surface-container px-2 py-1 rounded">YOLOv8 Active</span>
+</div>
+<div class="flex justify-between items-center mt-2">
+<span class="font-body-md text-body-md text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">dns</span> Database
+                                    </span>
+<span class="font-label-md text-label-md text-on-surface flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary"></span> Supabase Connected
+                                    </span>
+</div>
+</div>
+</div>
+<!-- Secondary Alert Box (Functional Example) -->
+<div class="bg-surface-container rounded-xl border border-outline-variant p-md flex items-start gap-md">
+<div class="p-2 bg-surface rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-secondary">info</span>
+</div>
+<div>
+<h4 class="font-label-md text-label-md font-bold text-on-surface">System Optimal</h4>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm mt-1">Water levels are well within the safe operational margins for Station Bravo. Next scheduled model recalibration in 4 hours.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Recent Detection Events Table -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-card flex flex-col mt-4">
+<div class="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-bright rounded-t-xl">
+<h3 class="font-title-lg text-title-lg text-on-surface">Recent Detection Events</h3>
+<button class="flex items-center gap-2 font-label-md text-label-md text-secondary hover:bg-surface-container px-3 py-1.5 rounded-lg transition-colors">
+                            View All History <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-outline-variant bg-surface-container-low/50">
+<th class="py-md px-lg font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Timestamp</th>
+<th class="py-md px-lg font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Station</th>
+<th class="py-md px-lg font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Water Level</th>
+<th class="py-md px-lg font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Risk State</th>
+<th class="py-md px-lg font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Thumbnail</th>
+</tr>
+</thead>
+<tbody class="font-body-md text-body-md text-on-surface divide-y divide-outline-variant/50">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-3 px-lg font-data-mono text-data-mono text-on-surface-variant">2023-10-27 14:30:00</td>
+<td class="py-3 px-lg">Station Bravo</td>
+<td class="py-3 px-lg font-data-mono font-medium">3.8m</td>
+<td class="py-3 px-lg">
+<span class="inline-flex items-center gap-1.5 bg-tertiary-fixed text-on-tertiary-container px-2.5 py-1 rounded-full text-xs font-semibold">
+                                            Normal
+                                        </span>
+</td>
+<td class="py-3 px-lg">
+<div class="w-16 h-10 rounded bg-surface border border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A small, blurry thumbnail image of a calm river viewed from a CCTV camera, capturing a normal water level moment in a clean light-mode UI context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMYn23baLsIAe-sKNCZrMzwxh1k5XGkb6qV1eJhSeHpedp_TSYbIwA0ySfiwpYf7mwnS395HJ-V3dXY0nd-ZknF_Anuo5sMt4t6CSewX19TkMquNj-EO4sPPPiLMwmb-yC4AlXvm0X7pLdUPbIlxcRnKkidp3PTbf3jEqQEJ3h9jriCJj4jKJsoHZ_eLIaTcSMNanUaWEwL5jL2MHR7Wv86RZhsAAPm99p3LY-nkMrDl0wrb1m5b0dI0ELB0fMfE87FUkc4jB6lBw"/>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-3 px-lg font-data-mono text-data-mono text-on-surface-variant">2023-10-27 14:15:00</td>
+<td class="py-3 px-lg">Station Bravo</td>
+<td class="py-3 px-lg font-data-mono font-medium">3.7m</td>
+<td class="py-3 px-lg">
+<span class="inline-flex items-center gap-1.5 bg-tertiary-fixed text-on-tertiary-container px-2.5 py-1 rounded-full text-xs font-semibold">
+                                            Normal
+                                        </span>
+</td>
+<td class="py-3 px-lg">
+<div class="w-16 h-10 rounded bg-surface border border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail image of a river bank taken from a security camera, showing regular water flow conditions during daytime." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYWLRmRtjI8R4wtOY6LFS8APP311TToOZorUksePvxYvk005T-Gt8-X_gjGJ7ZOLRkxgqv8zG8HTWMZofOCFDeWfXZZfU9yG2FQk0Z9RMLLwowsDUEp-VoiCDcLqUhFZf1rvVdBi-5emyC8qhRCqLpiZ2vPBlyEg2AxFE1UoyaMXhbybWHQIgDz1DkbuV1lmq-bSp8_1o9N_xGRSnb1bRlO0pfxhIMfVQundqoUWRcL_54C4RVE3GbVPcbBK9kvHlR_35XfZvkA_g"/>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors bg-surface-container">
+<td class="py-3 px-lg font-data-mono text-data-mono text-on-surface-variant">2023-10-27 12:00:00</td>
+<td class="py-3 px-lg">Station Bravo</td>
+<td class="py-3 px-lg font-data-mono font-bold text-error">4.2m</td>
+<td class="py-3 px-lg">
+<span class="inline-flex items-center gap-1.5 bg-error-container text-on-error-container px-2.5 py-1 rounded-full text-xs font-semibold">
+                                            Elevated
+                                        </span>
+</td>
+<td class="py-3 px-lg">
+<div class="w-16 h-10 rounded bg-surface border border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A small thumbnail image from a CCTV camera showing a river with slightly higher, faster-moving water levels compared to the banks." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDJn66m34wraiH7tbZ6G0gFhIAck9SLmoJwXyOQ3rHhrLHXWR0KUziGjr0SH-FbSX9q8mWl9VmUSBunlCWtrsEff_0B8nm-kBbYDhM_hPCdfb01daLVdRsqfpquU01XrvQ5O-QYTyP0BLCzmF2UM-YcgG6W4FT7xONDiuvrBTVWRHAF-KmLbG9eTOsy9JyTKif5_qEEdxnOphDO6fOOXkaaMINXPlQmthBJ1ZjfArk3KXYLu6M69j_0yQCNyqsPCgwANuWg4in6xGg"/>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Simple script to update the live time -->
+<script>
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            const el = document.getElementById('live-time');
+            if (el) el.textContent = timeString;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+    </script>
+</body></html>

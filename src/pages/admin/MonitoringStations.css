@@ -807,3 +807,228 @@
     flex-direction: column-reverse;
   }
 }
+
+/* AquaGuard precision UI refresh. */
+.stations-page {
+  gap: 18px;
+  padding: 22px 28px 34px;
+  background: #f7f9fb;
+  color: #191c1e;
+}
+
+.stations-message,
+.stations-stat-card,
+.stations-toolbar,
+.stations-list-card,
+.station-card,
+.stations-modal,
+.stations-delete-modal {
+  border-radius: 8px;
+}
+
+.stations-stat-card,
+.stations-toolbar,
+.stations-list-card,
+.station-card,
+.stations-modal,
+.stations-delete-modal {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(11, 25, 46, 0.06);
+}
+
+.stations-stat-grid {
+  gap: 18px;
+}
+
+.stations-stat-card {
+  min-height: 128px;
+  padding: 20px;
+}
+
+.stations-stat-icon {
+  border-radius: 8px;
+}
+
+.stations-icon-blue {
+  color: #00677f;
+  background: #d8f7fd;
+}
+
+.stations-icon-green {
+  color: #0f766e;
+  background: #e2f7f0;
+}
+
+.stations-icon-gray {
+  color: #525f77;
+  background: #eef2f7;
+}
+
+.stations-icon-orange {
+  color: #9a5f00;
+  background: #fff3d9;
+}
+
+.stations-icon-red {
+  color: #a20f17;
+  background: #fee8e8;
+}
+
+.stations-stat-card strong,
+.stations-section-header h2,
+.station-card-title h3,
+.stations-modal-header h2,
+.stations-delete-modal h3 {
+  color: #11161c;
+}
+
+.stations-eyebrow,
+.stations-filter > span,
+.stations-stat-card span,
+.stations-form-field > span {
+  color: #5f6670;
+  letter-spacing: 0.07em;
+}
+
+.stations-toolbar {
+  grid-template-columns: minmax(260px, 1fr) minmax(160px, 0.35fr) auto;
+  padding: 18px;
+}
+
+.stations-search,
+.stations-filter select,
+.stations-form-field input,
+.stations-form-field select,
+.station-card-actions select {
+  border-color: #c5cbd3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.stations-search:focus-within,
+.stations-filter select:focus,
+.stations-form-field input:focus,
+.stations-form-field select:focus {
+  border-color: #00c7eb;
+  box-shadow: 0 0 0 3px rgba(0, 199, 235, 0.14);
+}
+
+.stations-button-primary,
+.stations-button-secondary,
+.stations-confirm-delete,
+.station-action-button,
+.stations-modal-header > button {
+  border-radius: 8px;
+}
+
+.stations-button-primary {
+  border-color: #0b192e;
+  background: #0b192e;
+}
+
+.stations-button-secondary,
+.station-action-button,
+.stations-modal-header > button {
+  border-color: #c5cbd3;
+  background: #ffffff;
+}
+
+.stations-button-secondary:hover,
+.station-action-button:hover,
+.stations-modal-header > button:hover {
+  border-color: #00c7eb;
+  color: #00677f;
+  background: #f4fcfd;
+}
+
+.stations-grid {
+  gap: 18px;
+  padding: 18px;
+}
+
+.station-card {
+  padding: 20px;
+}
+
+.station-card-icon {
+  border-radius: 8px;
+  color: #00677f;
+  background: #d8f7fd;
+}
+
+.station-status,
+.water-status,
+.stations-record-count {
+  border-radius: 8px;
+}
+
+.station-status-online,
+.water-status-normal {
+  border-color: rgba(15, 159, 114, 0.32);
+  color: #0f766e !important;
+  background: #e2f7f0;
+}
+
+.station-status-offline {
+  border-color: #c5cbd3;
+  color: #525f77;
+  background: #eef2f7;
+}
+
+.station-status-maintenance,
+.water-status-warning {
+  border-color: rgba(245, 158, 11, 0.38);
+  color: #9a5f00 !important;
+  background: #fff3d9;
+}
+
+.water-status-critical {
+  border-color: rgba(197, 22, 29, 0.32);
+  color: #a20f17 !important;
+  background: #fee8e8;
+}
+
+.station-reading-panel {
+  border-color: #d8f7fd;
+  border-radius: 8px;
+  background: #f4fcfd;
+}
+
+.station-reading-panel strong {
+  color: #00677f;
+}
+
+.station-thresholds div,
+.stations-threshold-section {
+  border-color: #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.stations-modal-backdrop {
+  background: rgba(11, 25, 46, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+.stations-modal,
+.stations-delete-modal {
+  box-shadow: 0 24px 80px rgba(11, 25, 46, 0.24);
+}
+
+.stations-confirm-delete {
+  border-color: #c5161d;
+  background: #c5161d;
+}
+
+@media (max-width: 850px) {
+  .stations-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .stations-page {
+    padding: 16px;
+  }
+}

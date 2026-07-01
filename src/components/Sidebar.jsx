@@ -1,97 +1,118 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import {
+  Bell,
+  BrainCircuit,
+  Camera,
+  ClipboardList,
+  CloudRain,
+  FileText,
+  Gauge,
+  History,
+  LayoutDashboard,
+  LogOut,
+  MapPinned,
+  Megaphone,
+  RadioTower,
+  Settings,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 
-import BrandLogo from "./BrandLogo";
 import { useAuth } from "../context/AuthContext";
 
 const roleMenus = {
   admin: [
-    { label: "Dashboard", to: "/admin/dashboard", icon: "☷" },
-    { label: "Live Monitoring", to: "/admin/live-monitoring", icon: "◎" },
+    { label: "Dashboard", to: "/admin/dashboard", icon: LayoutDashboard },
+    { label: "Live Monitoring", to: "/admin/live-monitoring", icon: RadioTower },
     {
       label: "Water Level History",
       to: "/admin/water-level-history",
-      icon: "↻",
+      icon: History,
     },
-    { label: "Prediction", to: "/admin/prediction", icon: "▲" },
-    { label: "Weather", to: "/admin/weather", icon: "☁" },
-    { label: "Alerts", to: "/admin/alerts", icon: "⚠" },
+    { label: "Prediction", to: "/admin/prediction", icon: BrainCircuit },
+    { label: "Weather", to: "/admin/weather", icon: CloudRain },
+    { label: "Alerts", to: "/admin/alerts", icon: Bell },
     {
       label: "Monitoring Stations",
       to: "/admin/monitoring-stations",
-      icon: "▣",
+      icon: Gauge,
     },
-    { label: "Reports", to: "/admin/reports", icon: "▣" },
-    { label: "Settings", to: "/admin/settings", icon: "⚙" },
+    { label: "Reports", to: "/admin/reports", icon: FileText },
+    { label: "Settings", to: "/admin/settings", icon: Settings },
     {
       label: "Camera Settings",
       to: "/admin/camera-settings",
-      icon: "▣",
+      icon: Camera,
     },
   ],
   barangay_officer: [
-    { label: "Dashboard", to: "/officer/dashboard", icon: "☷" },
+    { label: "Dashboard", to: "/officer/dashboard", icon: LayoutDashboard },
     {
       label: "Water Level History",
       to: "/officer/water-level-history",
-      icon: "↻",
+      icon: History,
     },
-    { label: "Alerts", to: "/officer/alerts", icon: "⚠" },
-    { label: "Reports", to: "/officer/reports", icon: "▣" },
+    { label: "Alerts", to: "/officer/alerts", icon: Bell },
+    { label: "Reports", to: "/officer/reports", icon: FileText },
     {
       label: "Announcements",
       to: "/officer/announcements",
-      icon: "▣",
+      icon: Megaphone,
     },
     {
       label: "Evacuation Advisories",
       to: "/officer/evacuation-advisories",
-      icon: "⚠",
+      icon: ShieldAlert,
     },
-    { label: "Coordinate", to: "/officer/coordinate", icon: "▣" },
+    { label: "Coordinate", to: "/officer/coordinate", icon: MapPinned },
   ],
   disaster_responder: [
-    { label: "Dashboard", to: "/responder/dashboard", icon: "☷" },
+    { label: "Dashboard", to: "/responder/dashboard", icon: LayoutDashboard },
     {
       label: "Emergency Alerts",
       to: "/responder/emergency-alerts",
-      icon: "⚠",
+      icon: Bell,
     },
     {
       label: "Affected Areas",
       to: "/responder/affected-areas",
-      icon: "⌖",
+      icon: MapPinned,
     },
     {
       label: "Response Logs",
       to: "/responder/response-logs",
-      icon: "✓",
+      icon: ClipboardList,
     },
     {
       label: "Emergency Reports",
       to: "/responder/reports",
-      icon: "▣",
+      icon: FileText,
     },
-    { label: "Coordinate", to: "/responder/coordinate", icon: "▣" },
+    { label: "Coordinate", to: "/responder/coordinate", icon: MapPinned },
   ],
   resident: [
-    { label: "Flood Status", to: "/resident/dashboard", icon: "☷" },
-    { label: "Alerts", to: "/resident/alerts", icon: "⚠" },
+    { label: "Flood Status", to: "/resident/dashboard", icon: Gauge },
+    { label: "Alerts", to: "/resident/alerts", icon: Bell },
     {
       label: "Announcements",
       to: "/resident/announcements",
-      icon: "▣",
+      icon: Megaphone,
     },
-    { label: "Safety Tips", to: "/resident/safety-tips", icon: "▣" },
+    { label: "Safety Tips", to: "/resident/safety-tips", icon: ShieldAlert },
   ],
 };
 
 function AquaGuardLogo() {
   return (
-    <BrandLogo
-      className="sidebar-logo"
-      markClassName="sidebar-logo-mark"
-      subtitle="Flood Monitoring System"
-    />
+    <div className="sidebar-logo">
+      <span className="sidebar-logo-mark sidebar-logo-image-mark" aria-hidden="true">
+        <img src="/logo-transparent.png" alt="" />
+      </span>
+      <div>
+        <span className="brand-logo-title">AquaGuard</span>
+        <span className="brand-logo-subtitle">Flood Monitoring System</span>
+      </div>
+    </div>
   );
 }
 
@@ -126,7 +147,9 @@ export default function Sidebar({
               }
               onClick={onClose}
             >
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon">
+                <item.icon size={20} strokeWidth={2.1} />
+              </span>
               <span>{item.label}</span>
               {item.label.includes("Alerts") && unreadAlerts > 0 && (
                 <span className="nav-badge">{unreadAlerts}</span>
@@ -152,7 +175,9 @@ export default function Sidebar({
                 }
                 onClick={onClose}
               >
-                <span className="nav-icon">▣</span>
+                <span className="nav-icon">
+                  <Users size={20} strokeWidth={2.1} />
+                </span>
                 <span>Users</span>
               </NavLink>
             )}
@@ -162,7 +187,9 @@ export default function Sidebar({
               type="button"
               onClick={handleLogout}
             >
-              <span className="nav-icon">→</span>
+              <span className="nav-icon">
+                <LogOut size={20} strokeWidth={2.1} />
+              </span>
               <span>Logout</span>
             </button>
           </div>

@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AquaGuard - Monitoring Stations &amp; Users</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface": "#f7f9fb",
+                      "inverse-on-surface": "#eff1f3",
+                      "tertiary-fixed-dim": "#76d6d5",
+                      "on-background": "#191c1e",
+                      "surface-tint": "#525f77",
+                      "secondary": "#00677f",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary": "#ffffff",
+                      "background": "#f7f9fb",
+                      "surface-container-high": "#e6e8ea",
+                      "on-error-container": "#93000a",
+                      "on-tertiary-container": "#289291",
+                      "outline": "#75777d",
+                      "on-primary-fixed": "#0e1c31",
+                      "on-primary-fixed-variant": "#3a475e",
+                      "primary-fixed": "#d6e3ff",
+                      "tertiary-container": "#002020",
+                      "surface-container": "#eceef0",
+                      "primary-fixed-dim": "#bac7e3",
+                      "secondary-fixed-dim": "#47d6ff",
+                      "on-error": "#ffffff",
+                      "on-secondary-fixed-variant": "#004e60",
+                      "primary-container": "#0e1c31",
+                      "on-tertiary-fixed-variant": "#004f4f",
+                      "outline-variant": "#c5c6cd",
+                      "on-primary": "#ffffff",
+                      "surface-container-highest": "#e0e3e5",
+                      "on-surface": "#191c1e",
+                      "on-secondary-fixed": "#001f28",
+                      "surface-container-lowest": "#ffffff",
+                      "secondary-container": "#00d2ff",
+                      "on-primary-container": "#77849e",
+                      "tertiary": "#000000",
+                      "primary": "#000000",
+                      "error-container": "#ffdad6",
+                      "surface-dim": "#d8dadc",
+                      "on-surface-variant": "#44474d",
+                      "on-tertiary-fixed": "#002020",
+                      "surface-container-low": "#f2f4f6",
+                      "on-tertiary": "#ffffff",
+                      "on-secondary-container": "#00566a",
+                      "error": "#ba1a1a",
+                      "tertiary-fixed": "#93f2f2",
+                      "inverse-primary": "#bac7e3",
+                      "inverse-surface": "#2d3133",
+                      "secondary-fixed": "#b6ebff",
+                      "surface-bright": "#f7f9fb"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "margin": "32px",
+                      "gutter": "24px",
+                      "xl": "32px",
+                      "xs": "4px",
+                      "lg": "24px",
+                      "md": "16px",
+                      "base": "4px",
+                      "2xl": "48px"
+              },
+              "fontFamily": {
+                      "headline-lg-mobile": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "title-lg": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ],
+                      "data-mono": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "title-lg": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "0.01em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "data-mono": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .glass-overlay {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .soft-shadow {
+            box-shadow: 0px 4px 20px rgba(11, 25, 46, 0.05);
+        }
+      </style>
+</head>
+<body class="bg-surface text-on-surface font-body-md min-h-screen">
+<!-- SideNavBar -->
+<nav class="hidden md:flex fixed left-0 top-0 h-full flex flex-col justify-between py-margin w-72 border-r border-outline-variant shadow-sm bg-surface">
+<div class="px-md">
+<div class="flex items-center gap-md mb-xl">
+<div class="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined">water_drop</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface">AquaGuard</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Flood Monitoring System</p>
+</div>
+</div>
+<ul class="space-y-sm">
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                        Dashboard
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">sensors</span>
+                        Live Monitoring
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">history</span>
+                        Water Level History
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">batch_prediction</span>
+                        Prediction
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">cloud</span>
+                        Weather
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">notifications_active</span>
+                        Alerts
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md bg-secondary-container text-on-secondary-container p-md rounded-lg font-label-md text-label-md font-bold" href="#" id="nav-stations">
+<span class="material-symbols-outlined">settings_input_component</span>
+                        Monitoring Stations
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">description</span>
+                        Reports
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#" id="nav-users">
+<span class="material-symbols-outlined">group</span>
+                        Users
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings</span>
+                        Settings
+                    </a>
+</li>
+</ul>
+</div>
+<div class="px-md">
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+                Logout
+            </a>
+</div>
+</nav>
+<!-- TopAppBar -->
+<header class="hidden md:flex justify-between items-center w-full px-lg h-20 ml-72 max-w-[calc(100%-18rem)] fixed top-0 bg-surface/80 backdrop-blur-md border-b border-outline-variant z-10">
+<h2 class="font-title-lg text-title-lg text-secondary font-bold" id="page-title">Monitoring Stations</h2>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant hover:text-primary transition-opacity p-sm rounded-full hover:bg-surface-container"><span class="material-symbols-outlined">schedule</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-opacity p-sm rounded-full hover:bg-surface-container"><span class="material-symbols-outlined">sensors</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-opacity p-sm rounded-full hover:bg-surface-container relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-opacity p-sm rounded-full hover:bg-surface-container"><span class="material-symbols-outlined">dark_mode</span></button>
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant ml-sm">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a female engineer in a modern control room setting, wearing a dark navy shirt, softly lit with cool blue ambient light, representing a user profile avatar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-IuQ1QnTkRJmBaPs6r3eGfEXlrL5-mvX6WUNW0z_oS3pfgPKeiwwEzKEih4ifmzBznBPfUocJPxWwqDjgVr-njz3Gau18q6IEApvFi-nebqEsC-ho8s-RTNDRAzai-kUVS3iFdRDr4RXywe7AP3PsjRxFa-_c16NVgKnnSfMU0G-wpAwkF0TCqMoRnyhJY7SFHpmrGECBgn8rAEa24Jb4Iz6kQ1wlIsLi-8p75zIgGgsFs_ZRW-e41PmA3kfQDNX_2vefSOe1bDA"/>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="pt-24 md:ml-72 p-gutter min-h-screen">
+<!-- Tab Switching Logic for Demo -->
+<div class="flex gap-sm mb-lg border-b border-outline-variant pb-sm">
+<button class="px-md py-sm rounded-t-lg bg-surface-container-high text-on-surface font-label-md font-bold border-b-2 border-primary" id="tab-stations" onclick="showSection('stations')">Stations</button>
+<button class="px-md py-sm rounded-t-lg text-on-surface-variant hover:bg-surface-container font-label-md" id="tab-users" onclick="showSection('users')">Users</button>
+</div>
+<!-- STATIONS SECTION -->
+<section class="grid grid-cols-1 xl:grid-cols-12 gap-gutter h-[calc(100vh-180px)]" id="section-stations">
+<!-- Map View (Left) -->
+<div class="xl:col-span-7 bg-white rounded-[16px] border border-outline-variant soft-shadow overflow-hidden relative flex flex-col">
+<div class="absolute top-md left-md z-10 glass-overlay p-sm rounded-lg border border-outline-variant shadow-sm">
+<h3 class="font-label-md text-label-md font-bold text-on-surface">Regional Overview</h3>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Active Sensors: 12/12</p>
+</div>
+<div class="w-full h-full bg-surface-container-low relative" data-location="Manila" style="">
+<!-- Faux Map Background -->
+<div class="absolute inset-0 bg-[#e5e9ec] opacity-50"></div>
+<img class="w-full h-full object-cover opacity-60" data-alt="A highly detailed, stylized digital map of a river system running through an urban area, rendered in a modern clean style with light grey landmasses, soft blue waterways, and subtle topographical lines. High tech interface aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHU6Q3LcTyrMQdGAHsDO-HMPJi6FFfgn6nyYjW2n9TchUMj0nveYX60d-CZGrH3K0I3a7RT8F26G1PAP0lhPMPnLV7T2DhKMF_U6WFx7XEyywmNFWZFxtNo4SVAE5oCM55jGvPyueGdYZ3ipnJF3pgioG38SJZIRRLH_q2opmrGtQGeSVksOKp1NrNlmVUI1C-0PwkECCHLaPR1Tp3EKkmdqeVZB_EZACVDl3Zt9adnXo7dK7DY9rkZ2h0jVSE40Eoghq70HMhwDw"/>
+<!-- Map Markers -->
+<div class="absolute top-[30%] left-[40%] flex flex-col items-center">
+<div class="w-4 h-4 bg-error rounded-full border-2 border-white shadow-md animate-pulse"></div>
+<span class="glass-overlay px-2 py-1 rounded text-[10px] font-bold mt-1 text-on-surface">ST-01 (Critical)</span>
+</div>
+<div class="absolute top-[50%] left-[60%] flex flex-col items-center">
+<div class="w-4 h-4 bg-tertiary-fixed-dim rounded-full border-2 border-white shadow-md"></div>
+<span class="glass-overlay px-2 py-1 rounded text-[10px] font-bold mt-1 text-on-surface">ST-02 (Normal)</span>
+</div>
+<div class="absolute top-[70%] left-[30%] flex flex-col items-center">
+<div class="w-4 h-4 bg-tertiary-fixed-dim rounded-full border-2 border-white shadow-md"></div>
+<span class="glass-overlay px-2 py-1 rounded text-[10px] font-bold mt-1 text-on-surface">ST-03 (Normal)</span>
+</div>
+</div>
+</div>
+<!-- List View (Right) -->
+<div class="xl:col-span-5 flex flex-col bg-surface rounded-[16px]">
+<div class="flex justify-between items-center mb-md">
+<h3 class="font-title-lg text-title-lg text-on-surface font-bold">Active Stations</h3>
+<button class="bg-[#0B192E] text-white px-md py-sm rounded-lg font-label-md text-label-md flex items-center gap-xs hover:bg-primary-container transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                        Add New Station
+                    </button>
+</div>
+<div class="flex-1 overflow-y-auto space-y-sm pr-xs">
+<!-- Station Card 1 (Critical) -->
+<div class="bg-white rounded-[16px] border-2 border-error p-md soft-shadow">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-title-lg font-bold text-on-surface">Marikina River ST-01</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Brgy. Tumana
+                                </p>
+</div>
+<span class="bg-error-container text-on-error-container px-sm py-xs rounded-full font-label-sm text-label-sm font-bold flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px]">warning</span> Critical
+                            </span>
+</div>
+<div class="grid grid-cols-2 gap-sm mt-md">
+<div class="bg-surface-container-low p-sm rounded-lg">
+<p class="font-label-sm text-label-sm text-on-surface-variant">Water Level</p>
+<p class="font-headline-md text-headline-md font-bold text-error">17.5m</p>
+</div>
+<div class="flex flex-col gap-xs justify-center pl-sm border-l border-outline-variant">
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+<span class="font-label-md text-label-md text-on-surface">Camera Offline</span>
+</div>
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label-md text-label-md text-on-surface">Sensor Active</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Station Card 2 (Normal) -->
+<div class="bg-white rounded-[16px] border border-outline-variant p-md soft-shadow">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-title-lg font-bold text-on-surface">Pasig River ST-02</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Guadalupe Nuevo
+                                </p>
+</div>
+<span class="bg-surface-container-high text-on-surface px-sm py-xs rounded-full font-label-sm text-label-sm font-bold flex items-center gap-xs">
+                                Normal
+                            </span>
+</div>
+<div class="grid grid-cols-2 gap-sm mt-md">
+<div class="bg-surface-container-low p-sm rounded-lg">
+<p class="font-label-sm text-label-sm text-on-surface-variant">Water Level</p>
+<p class="font-headline-md text-headline-md font-bold text-tertiary-fixed-dim">12.1m</p>
+</div>
+<div class="flex flex-col gap-xs justify-center pl-sm border-l border-outline-variant">
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label-md text-label-md text-on-surface">Camera Active</span>
+</div>
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label-md text-label-md text-on-surface">Sensor Active</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Station Card 3 (Normal) -->
+<div class="bg-white rounded-[16px] border border-outline-variant p-md soft-shadow">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-title-lg font-bold text-on-surface">San Juan River ST-03</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Brgy. Batis
+                                </p>
+</div>
+<span class="bg-surface-container-high text-on-surface px-sm py-xs rounded-full font-label-sm text-label-sm font-bold flex items-center gap-xs">
+                                Normal
+                            </span>
+</div>
+<div class="grid grid-cols-2 gap-sm mt-md">
+<div class="bg-surface-container-low p-sm rounded-lg">
+<p class="font-label-sm text-label-sm text-on-surface-variant">Water Level</p>
+<p class="font-headline-md text-headline-md font-bold text-tertiary-fixed-dim">9.8m</p>
+</div>
+<div class="flex flex-col gap-xs justify-center pl-sm border-l border-outline-variant">
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label-md text-label-md text-on-surface">Camera Active</span>
+</div>
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label-md text-label-md text-on-surface">Sensor Active</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- USERS SECTION (Hidden by default) -->
+<section class="hidden" id="section-users">
+<div class="bg-white rounded-[16px] border border-outline-variant soft-shadow overflow-hidden">
+<!-- Table Header Actions -->
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest">
+<div class="flex gap-md">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+<input class="pl-xl pr-sm py-sm border border-outline-variant rounded-lg font-label-md focus:ring-secondary-container focus:border-secondary-container bg-surface w-64 text-on-surface" placeholder="Search users..." type="text"/>
+</div>
+<select class="border border-outline-variant rounded-lg px-md py-sm font-label-md bg-surface text-on-surface focus:ring-secondary-container focus:border-secondary-container">
+<option value="">All Roles</option>
+<option value="admin">Admin</option>
+<option value="responder">Responder</option>
+<option value="analyst">Analyst</option>
+</select>
+<select class="border border-outline-variant rounded-lg px-md py-sm font-label-md bg-surface text-on-surface focus:ring-secondary-container focus:border-secondary-container">
+<option value="">All Statuses</option>
+<option value="active">Active</option>
+<option value="inactive">Inactive</option>
+</select>
+</div>
+<button class="bg-[#0B192E] text-white px-md py-sm rounded-lg font-label-md text-label-md flex items-center gap-xs hover:bg-primary-container transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[18px]">person_add</span>
+                        Add User
+                    </button>
+</div>
+<!-- Users Table -->
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
+<tr>
+<th class="p-md border-b border-outline-variant">User</th>
+<th class="p-md border-b border-outline-variant">Role</th>
+<th class="p-md border-b border-outline-variant">Status</th>
+<th class="p-md border-b border-outline-variant">Created Date</th>
+<th class="p-md border-b border-outline-variant text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="font-body-md text-body-md text-on-surface">
+<tr class="hover:bg-surface-container-low transition-colors border-b border-outline-variant/50">
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="Professional headshot of a male government official in a light grey collared shirt, neutral expression, soft studio lighting against a clean white background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_IuxWgGoIUWu-PeFVQ55dFhIULgGzdiJKcG-s7zefF1PTSZZrqxhR7d2VGE9BBleuOMdfWe_WuYUDH7lHtX4mXXMDfHk7yck7PmBwI59Jod3F6x072e3Hxp66_W7gwKco4F1wb99YNOnxghRLd_PYe387sg-5s6Fz1RovqFeMKu0FZo8acNZrO0iLpSelPofi7XlaEuoje3PxLJWGLpow5dt5amu9fHj3-IsgJpt5DhfNvYURWN9YCFWUd-N52EGO8ysdER7LwK8"/>
+</div>
+<div>
+<p class="font-bold">Juan Dela Cruz</p>
+<p class="text-on-surface-variant font-label-sm">juan.delacruz@aquaguard.gov</p>
+</div>
+</div>
+</td>
+<td class="p-md">
+<span class="bg-primary-container text-on-primary-container px-sm py-xs rounded-full font-label-sm text-label-sm">Admin</span>
+</td>
+<td class="p-md">
+<span class="bg-[#def7ec] text-[#03543f] px-sm py-xs rounded-full font-label-sm text-label-sm flex items-center gap-xs w-fit">
+<span class="w-2 h-2 rounded-full bg-[#057a55]"></span> Active
+                                    </span>
+</td>
+<td class="p-md text-on-surface-variant">Oct 12, 2023</td>
+<td class="p-md text-right">
+<button class="text-on-surface-variant hover:text-primary p-xs"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="text-on-surface-variant hover:text-error p-xs"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors border-b border-outline-variant/50">
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant flex items-center justify-center text-on-surface-variant font-bold">
+                                            MC
+                                        </div>
+<div>
+<p class="font-bold">Maria Clara</p>
+<p class="text-on-surface-variant font-label-sm">m.clara@aquaguard.gov</p>
+</div>
+</div>
+</td>
+<td class="p-md">
+<span class="bg-surface-variant text-on-surface-variant px-sm py-xs rounded-full font-label-sm text-label-sm">Responder</span>
+</td>
+<td class="p-md">
+<span class="bg-[#def7ec] text-[#03543f] px-sm py-xs rounded-full font-label-sm text-label-sm flex items-center gap-xs w-fit">
+<span class="w-2 h-2 rounded-full bg-[#057a55]"></span> Active
+                                    </span>
+</td>
+<td class="p-md text-on-surface-variant">Nov 05, 2023</td>
+<td class="p-md text-right">
+<button class="text-on-surface-variant hover:text-primary p-xs"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="text-on-surface-variant hover:text-error p-xs"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="Professional portrait of a female data analyst wearing glasses, looking confidently at the camera, cool lighting typical of a high-tech monitoring center." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDt9L0TSfvIooU4IKbVjQNHAOydvxtXqRdFa9Tpktwn6N14dyDksQEaDqukp5nMBxPIjUVaxeQ8VQ4HAw_LJJos6JWPw4sgYZu_Re7R_yHopoTBUeSgvx8kjjiOn-X0okyrENGE_s4A1d0-c1KpeTBmEU9D-UYvggxi2_B1GZGdqyqu5SU0gbwE7p5xFk3g0jhNE1XKl2svKMy2-Ss9IxuaaMUDZI5jEgEQJdzc2B1w7x-AjmYYvLfwAbBpYbc2AOwi7mKsL6oeGFE"/>
+</div>
+<div>
+<p class="font-bold">Ana Reyes</p>
+<p class="text-on-surface-variant font-label-sm">a.reyes@aquaguard.gov</p>
+</div>
+</div>
+</td>
+<td class="p-md">
+<span class="bg-surface-variant text-on-surface-variant px-sm py-xs rounded-full font-label-sm text-label-sm">Analyst</span>
+</td>
+<td class="p-md">
+<span class="bg-surface-container-high text-on-surface-variant px-sm py-xs rounded-full font-label-sm text-label-sm flex items-center gap-xs w-fit">
+<span class="w-2 h-2 rounded-full bg-outline"></span> Inactive
+                                    </span>
+</td>
+<td class="p-md text-on-surface-variant">Dec 20, 2023</td>
+<td class="p-md text-right">
+<button class="text-on-surface-variant hover:text-primary p-xs"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="text-on-surface-variant hover:text-error p-xs"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination Footer -->
+<div class="p-md border-t border-outline-variant bg-surface flex justify-between items-center font-label-sm text-on-surface-variant">
+<span>Showing 1 to 3 of 24 entries</span>
+<div class="flex gap-xs">
+<button class="px-sm py-xs border border-outline-variant rounded hover:bg-surface-container disabled:opacity-50" disabled="">Prev</button>
+<button class="px-sm py-xs border border-outline-variant rounded bg-secondary-container text-on-secondary-container font-bold">1</button>
+<button class="px-sm py-xs border border-outline-variant rounded hover:bg-surface-container">2</button>
+<button class="px-sm py-xs border border-outline-variant rounded hover:bg-surface-container">Next</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<script>
+        function showSection(sectionId) {
+            // Hide all sections
+            document.getElementById('section-stations').classList.add('hidden');
+            document.getElementById('section-users').classList.add('hidden');
+            
+            // Reset tab styles
+            const tabStations = document.getElementById('tab-stations');
+            const tabUsers = document.getElementById('tab-users');
+            const navStations = document.getElementById('nav-stations');
+            const navUsers = document.getElementById('nav-users');
+            const pageTitle = document.getElementById('page-title');
+            
+            // Reset Tabs
+            tabStations.className = 'px-md py-sm rounded-t-lg text-on-surface-variant hover:bg-surface-container font-label-md';
+            tabUsers.className = 'px-md py-sm rounded-t-lg text-on-surface-variant hover:bg-surface-container font-label-md';
+            
+            // Reset Nav
+            navStations.className = 'flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md';
+            navUsers.className = 'flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md';
+
+
+            if(sectionId === 'stations') {
+                document.getElementById('section-stations').classList.remove('hidden');
+                tabStations.className = 'px-md py-sm rounded-t-lg bg-surface-container-high text-on-surface font-label-md font-bold border-b-2 border-primary';
+                navStations.className = 'flex items-center gap-md bg-secondary-container text-on-secondary-container p-md rounded-lg font-label-md text-label-md font-bold';
+                pageTitle.innerText = 'Monitoring Stations';
+            } else if (sectionId === 'users') {
+                document.getElementById('section-users').classList.remove('hidden');
+                tabUsers.className = 'px-md py-sm rounded-t-lg bg-surface-container-high text-on-surface font-label-md font-bold border-b-2 border-primary';
+                navUsers.className = 'flex items-center gap-md bg-secondary-container text-on-secondary-container p-md rounded-lg font-label-md text-label-md font-bold';
+                pageTitle.innerText = 'User Management';
+            }
+        }
+    </script>
+</body></html>

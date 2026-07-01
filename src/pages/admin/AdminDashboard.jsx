@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Activity,
+  CheckCircle2,
+  CloudRain,
+  Megaphone,
+  Play,
+  Settings,
+  TriangleAlert,
+  Waves,
+} from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -7,19 +17,6 @@ import { supabase } from "../../lib/supabase";
 
 const cameraApiUrl =
   import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000";
-
-const weatherIcons = {
-  0: "☀",
-  1: "☀",
-  2: "☁",
-  3: "☁",
-  45: "☁",
-  51: "☂",
-  61: "☂",
-  71: "☁",
-  80: "☂",
-  95: "⚡",
-};
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -482,7 +479,9 @@ function AdminDashboardContent() {
             <div className="stat-card">
               <div className="stat-header">
                 <span className="stat-label">CURRENT WATER LEVEL</span>
-                <span className="stat-icon blue">≈</span>
+                <span className="stat-icon blue">
+                  <Waves size={22} />
+                </span>
               </div>
               <div className="stat-value blue">
                 {primary ? formatLevel(currentLevel) : "No data"}
@@ -498,7 +497,7 @@ function AdminDashboardContent() {
                 <span
                   className={`stat-icon ${status.className}`}
                 >
-                  !
+                  <TriangleAlert size={22} />
                 </span>
               </div>
               <div
@@ -514,7 +513,9 @@ function AdminDashboardContent() {
             <div className="stat-card">
               <div className="stat-header">
                 <span className="stat-label">RAINFALL (24H)</span>
-                <span className="stat-icon blue">≋</span>
+                <span className="stat-icon blue">
+                  <CloudRain size={22} />
+                </span>
               </div>
               <div className="stat-value blue">
                 {primary ? `${formatOneDecimal(rainfall24)} mm` : "No data"}
@@ -525,7 +526,9 @@ function AdminDashboardContent() {
             <div className="stat-card">
               <div className="stat-header">
                 <span className="stat-label">SYSTEM UPTIME</span>
-                <span className="stat-icon green">⚡</span>
+                <span className="stat-icon green">
+                  <CheckCircle2 size={22} />
+                </span>
               </div>
               <div className="stat-value green">
                 {uptimeDays == null ? "No data" : "Online"}
@@ -543,7 +546,7 @@ function AdminDashboardContent() {
               <div className="stat-header">
                 <span className="stat-label">WEATHER</span>
                 <span className="weather-icon">
-                  {weatherIcons[Number(weather?.weather_code)] ?? "☁"}
+                  <CloudRain size={24} />
                 </span>
               </div>
               <div className="stat-value compact">
@@ -558,7 +561,9 @@ function AdminDashboardContent() {
             <div className="stat-card rain-card">
               <div className="stat-header">
                 <span className="stat-label">RAIN NOW</span>
-                <span className="stat-icon rain">≋</span>
+                <span className="stat-icon rain">
+                  <CloudRain size={22} />
+                </span>
               </div>
               <div className="stat-value rain">
                 {weather
@@ -576,7 +581,9 @@ function AdminDashboardContent() {
             <div className="stat-card weather-risk-card">
               <div className="stat-header">
                 <span className="stat-label">WEATHER RISK</span>
-                <span className="stat-icon orange">!</span>
+                <span className="stat-icon orange">
+                  <TriangleAlert size={22} />
+                </span>
               </div>
               <div className="stat-value orange">
                 {weatherRisk == null ? "No data" : `${weatherRisk}%`}
@@ -587,7 +594,9 @@ function AdminDashboardContent() {
             <div className="stat-card yolo-card">
               <div className="stat-header">
                 <span className="stat-label">YOLO FLOOD RISK</span>
-                <span className="stat-icon red">AI</span>
+                <span className="stat-icon red">
+                  <Activity size={22} />
+                </span>
               </div>
               <div
                 className="stat-value"
@@ -652,7 +661,8 @@ function AdminDashboardContent() {
                     to="/admin/live-monitoring"
                     className="icon-btn-sm"
                   >
-                    ▶ View Live
+                    <Play size={15} />
+                    View Live
                   </Link>
                 </div>
               </div>
@@ -685,7 +695,7 @@ function AdminDashboardContent() {
                     </div>
                     {alert.type === "critical" && (
                       <Link to="/admin/alerts" className="alert-link">
-                        VIEW DATA →
+                        View Data
                       </Link>
                     )}
                   </div>
@@ -697,7 +707,7 @@ function AdminDashboardContent() {
           <section className="bottom-row">
             <div className="chart-card">
               <div className="panel-header">
-                <span>▱ History (24h)</span>
+                <span>History (24h)</span>
                 <span className="legend">
                   <span className="dot-crit" />
                   Crit
@@ -747,7 +757,7 @@ function AdminDashboardContent() {
 
             <div className="station-card">
               <div className="panel-header">
-                <span>▱ Station Info</span>
+                <span>Station Info</span>
               </div>
               <div className="station-body">
                 <div className="station-details">
@@ -813,7 +823,7 @@ function AdminDashboardContent() {
                 type="button"
                 onClick={() => setModal("announcement")}
               >
-                <span>▣</span>
+                <Megaphone size={23} />
                 ISSUE PUBLIC
                 <br />
                 ANNOUNCEMENT
@@ -824,7 +834,7 @@ function AdminDashboardContent() {
                 type="button"
                 onClick={() => setModal("maintenance")}
               >
-                <span>⚙</span>
+                <Settings size={23} />
                 DISPATCH
                 <br />
                 MAINTENANCE
@@ -1008,8 +1018,8 @@ function AdminDashboardContent() {
 export default function AdminDashboard() {
   return (
     <DashboardLayout
-      title="Dashboard"
-      description="AquaGuard administrative control center."
+      title="Flood Monitoring Overview"
+      description="Real-time water-level monitoring and AI-powered flood detection across active stations."
     >
       <AdminDashboardContent />
     </DashboardLayout>

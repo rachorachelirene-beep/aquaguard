@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AquaGuard - Admin Dashboard</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#f7f9fb",
+                        "inverse-on-surface": "#eff1f3",
+                        "tertiary-fixed-dim": "#76d6d5",
+                        "on-background": "#191c1e",
+                        "surface-tint": "#525f77",
+                        "secondary": "#00677f",
+                        "surface-variant": "#e0e3e5",
+                        "on-secondary": "#ffffff",
+                        "background": "#f7f9fb",
+                        "surface-container-high": "#e6e8ea",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-container": "#289291",
+                        "outline": "#75777d",
+                        "on-primary-fixed": "#0e1c31",
+                        "on-primary-fixed-variant": "#3a475e",
+                        "primary-fixed": "#d6e3ff",
+                        "tertiary-container": "#002020",
+                        "surface-container": "#eceef0",
+                        "primary-fixed-dim": "#bac7e3",
+                        "secondary-fixed-dim": "#47d6ff",
+                        "on-error": "#ffffff",
+                        "on-secondary-fixed-variant": "#004e60",
+                        "primary-container": "#0e1c31",
+                        "on-tertiary-fixed-variant": "#004f4f",
+                        "outline-variant": "#c5c6cd",
+                        "on-primary": "#ffffff",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-surface": "#191c1e",
+                        "on-secondary-fixed": "#001f28",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-container": "#00d2ff",
+                        "on-primary-container": "#77849e",
+                        "tertiary": "#000000",
+                        "primary": "#000000",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadc",
+                        "on-surface-variant": "#44474d",
+                        "on-tertiary-fixed": "#002020",
+                        "surface-container-low": "#f2f4f6",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-container": "#00566a",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed": "#93f2f2",
+                        "inverse-primary": "#bac7e3",
+                        "inverse-surface": "#2d3133",
+                        "secondary-fixed": "#b6ebff",
+                        "surface-bright": "#f7f9fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "margin": "32px",
+                        "gutter": "24px",
+                        "xl": "32px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "md": "16px",
+                        "base": "4px",
+                        "2xl": "48px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "data-mono": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "title-lg": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "data-mono": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: theme('colors.surface'); }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0px 4px 20px rgba(11, 25, 46, 0.05);
+        }
+        .gauge-arc {
+            stroke-dasharray: 283; /* 2 * pi * 45 */
+            stroke-dashoffset: 283;
+            animation: fillGauge 1.5s ease-out forwards;
+        }
+        @keyframes fillGauge {
+            to { stroke-dashoffset: 85; } /* Approx 70% fill (283 * 0.3) */
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex font-body-md">
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full flex flex-col justify-between py-margin bg-surface border-r border-outline-variant shadow-sm w-72 z-40 hidden md:flex">
+<div>
+<!-- Header -->
+<div class="px-gutter mb-margin flex items-center gap-md">
+<div class="w-10 h-10 bg-secondary-container rounded-lg flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined" data-weight="fill" style="font-variation-settings: 'FILL' 1;">water_drop</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface">AquaGuard</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Flood Monitoring System</p>
+</div>
+</div>
+<!-- Navigation Links -->
+<ul class="px-md space-y-xs">
+<li>
+<a class="flex items-center gap-md bg-secondary-container text-on-secondary-container p-md rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                        Dashboard
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">sensors</span>
+                        Live Monitoring
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">history</span>
+                        Water Level History
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">batch_prediction</span>
+                        Prediction
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">cloud</span>
+                        Weather
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">notifications_active</span>
+                        Alerts
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings_input_component</span>
+                        Monitoring Stations
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">description</span>
+                        Reports
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">group</span>
+                        Users
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings</span>
+                        Settings
+                    </a>
+</li>
+</ul>
+</div>
+<!-- Footer -->
+<div class="px-md">
+<a class="flex items-center gap-md text-on-surface-variant p-md hover:bg-surface-container-high transition-colors rounded-lg font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+                Logout
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 ml-0 md:ml-72 flex flex-col min-h-screen bg-background">
+<!-- TopAppBar -->
+<header class="flex justify-end items-center w-full px-lg h-20 bg-surface/80 backdrop-blur-md border-b border-outline-variant sticky top-0 z-30">
+<div class="flex items-center gap-md">
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-opacity opacity-80 hover:opacity-100 rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">schedule</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-opacity opacity-80 hover:opacity-100 rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">sensors</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-opacity opacity-80 hover:opacity-100 rounded-full hover:bg-surface-container relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-opacity opacity-80 hover:opacity-100 rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">dark_mode</span>
+</button>
+<div class="ml-sm w-10 h-10 rounded-full overflow-hidden border border-outline-variant cursor-pointer">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a system administrator in a high-tech control room environment. Soft, modern lighting, sharp focus, cool corporate aesthetic with subtle blue background tones indicating a mission control setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzyf27rD9Wh51DvmntFS6QXn4xeL8Qd2WBm4Pzq5MTO2_T0yU0hZtwfYNTz6pzhTZhwwtje-vK2M1rt8S6FWIqRmZPm6hfTaGeJyofwHO9KdUikMdF5M9opLZE-F2CjRTSQ-Pa7X32dE_vILMq9vHaC-6FwCHm_LZCHjsRKZSTnwXpRPXmQxpb_mlRWeldeCzvUXD2Sl4PZmEzVz9CGAijmS5l664szb-Ddr-e6sLOND2RG4ooSW-uYIThb_iaI4IxgnztuieV-tE"/>
+</div>
+</div>
+</header>
+<!-- Canvas -->
+<div class="p-gutter lg:p-xl flex-1 flex flex-col gap-xl">
+<!-- Welcome Section -->
+<section class="flex flex-col gap-xs">
+<h2 class="font-display-lg text-display-lg text-on-surface md:text-[40px] md:leading-[48px]">Flood Monitoring Overview</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-3xl">Real-time water-level monitoring and AI-powered flood detection across all active stations.</p>
+</section>
+<!-- Summary Cards Bento -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter">
+<!-- Active Stations -->
+<div class="glass-panel p-lg rounded-xl flex flex-col gap-sm relative overflow-hidden group">
+<div class="absolute -right-4 -top-4 w-24 h-24 bg-secondary/5 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+<div class="flex justify-between items-start">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase">Active Stations</p>
+<span class="material-symbols-outlined text-secondary">cell_tower</span>
+</div>
+<div class="mt-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface block">12</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed-dim/20 px-2 py-1 rounded mt-xs inline-block">All Active</span>
+</div>
+</div>
+<!-- Active Alerts -->
+<div class="glass-panel p-lg rounded-xl flex flex-col gap-sm relative overflow-hidden group border-l-4 border-l-error">
+<div class="absolute -right-4 -top-4 w-24 h-24 bg-error/5 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+<div class="flex justify-between items-start">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase">Active Alerts</p>
+<span class="material-symbols-outlined text-error">warning</span>
+</div>
+<div class="mt-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface block">2</span>
+<span class="font-label-sm text-label-sm text-error bg-error-container px-2 py-1 rounded mt-xs inline-block">Warnings Active</span>
+</div>
+</div>
+<!-- Highest Level -->
+<div class="glass-panel p-lg rounded-xl flex flex-col gap-sm relative overflow-hidden group">
+<div class="absolute -right-4 -top-4 w-24 h-24 bg-secondary/5 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+<div class="flex justify-between items-start">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase">Peak Level</p>
+<span class="material-symbols-outlined text-secondary">waves</span>
+</div>
+<div class="mt-sm flex items-baseline gap-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface">4.2</span>
+<span class="font-body-md text-body-md text-on-surface-variant">m</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-xs inline-block">Station Alpha</span>
+</div>
+<!-- System Status -->
+<div class="glass-panel p-lg rounded-xl flex flex-col gap-sm relative overflow-hidden group">
+<div class="absolute -right-4 -top-4 w-24 h-24 bg-secondary-container/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+<div class="flex justify-between items-start">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase">System Status</p>
+<span class="material-symbols-outlined text-secondary-container">check_circle</span>
+</div>
+<div class="mt-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface block">100%</span>
+<span class="font-label-sm text-label-sm text-on-secondary-container bg-secondary-container/20 px-2 py-1 rounded mt-xs inline-block">AI Model v2.4 Active</span>
+</div>
+</div>
+</section>
+<!-- Main Dashboard Split -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-gutter h-[500px]">
+<!-- Left: Water Level Trends Chart -->
+<div class="lg:col-span-8 glass-panel rounded-xl p-lg flex flex-col h-full bg-surface-container-lowest">
+<div class="flex justify-between items-center mb-md border-b border-outline-variant pb-md">
+<h3 class="font-title-lg text-title-lg text-on-surface">Water Level Trends</h3>
+<!-- Filters -->
+<div class="flex gap-sm">
+<select class="bg-surface border border-outline-variant text-on-surface text-sm rounded-lg focus:ring-secondary-container focus:border-secondary-container block p-2 font-label-md">
+<option>All Stations</option>
+<option>Station Alpha</option>
+<option>Station Beta</option>
+</select>
+<div class="flex bg-surface-container rounded-lg p-1 border border-outline-variant">
+<button class="px-3 py-1 rounded bg-surface shadow-sm font-label-sm text-on-surface">Today</button>
+<button class="px-3 py-1 rounded text-on-surface-variant font-label-sm hover:bg-surface-container-high transition">7D</button>
+<button class="px-3 py-1 rounded text-on-surface-variant font-label-sm hover:bg-surface-container-high transition">30D</button>
+</div>
+</div>
+</div>
+<!-- Faux Chart Area -->
+<div class="flex-1 relative w-full mt-4 flex flex-col justify-end">
+<!-- Y-Axis Labels & Grid Lines -->
+<div class="absolute inset-0 flex flex-col justify-between text-on-surface-variant font-data-mono text-xs pb-6">
+<div class="flex items-center w-full border-t border-error/30 relative">
+<span class="absolute -top-3 -left-2 bg-background pr-2">6m - Critical</span>
+</div>
+<div class="flex items-center w-full border-t border-orange-400/30 border-dashed relative">
+<span class="absolute -top-3 -left-2 bg-background pr-2">4m - Warning</span>
+</div>
+<div class="flex items-center w-full border-t border-tertiary-fixed-dim/30 relative">
+<span class="absolute -top-3 -left-2 bg-background pr-2">2m - Normal</span>
+</div>
+<div class="flex items-center w-full border-t border-outline-variant">
+<span class="absolute -top-3 -left-2 bg-background pr-2">0m</span>
+</div>
+</div>
+<!-- Chart Path (SVG) -->
+<div class="absolute inset-0 pb-6 pl-12 pr-4 pt-4">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 100 100">
+<!-- Area Fill -->
+<defs>
+<lineargradient id="gradientArea" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#00d2ff" stop-opacity="0.2"></stop>
+<stop offset="100%" stop-color="#00d2ff" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<path d="M0,80 C10,75 20,85 30,60 C40,35 50,45 60,30 C70,15 80,40 90,20 C95,10 100,25 100,25 L100,100 L0,100 Z" fill="url(#gradientArea)"></path>
+<!-- Line Path -->
+<path d="M0,80 C10,75 20,85 30,60 C40,35 50,45 60,30 C70,15 80,40 90,20 C95,10 100,25 100,25" fill="none" stroke="#00d2ff" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+<!-- Current Point Indicator -->
+<circle cx="90" cy="20" fill="#ffffff" r="3" stroke="#00d2ff" stroke-width="2" vector-effect="non-scaling-stroke"></circle>
+</svg>
+</div>
+<!-- X-Axis Labels -->
+<div class="h-6 flex justify-between px-12 items-end font-data-mono text-xs text-on-surface-variant">
+<span>00:00</span>
+<span>04:00</span>
+<span>08:00</span>
+<span>12:00</span>
+<span>16:00</span>
+<span>20:00</span>
+<span>Now</span>
+</div>
+</div>
+</div>
+<!-- Right: Flood Risk Status -->
+<div class="lg:col-span-4 glass-panel rounded-xl p-lg flex flex-col bg-surface-container-lowest">
+<h3 class="font-title-lg text-title-lg text-on-surface border-b border-outline-variant pb-md mb-lg">Current Flood Risk</h3>
+<div class="flex-1 flex flex-col items-center justify-center">
+<!-- Gauge -->
+<div class="relative w-48 h-48 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 100 100">
+<!-- Background Arc -->
+<circle class="text-surface-variant" cx="50" cy="50" fill="none" r="45" stroke="currentColor" stroke-width="8"></circle>
+<!-- Value Arc (Amber/Warning) -->
+<circle class="gauge-arc" cx="50" cy="50" fill="none" r="45" stroke="#f59e0b" stroke-linecap="round" stroke-width="8"></circle>
+</svg>
+<!-- Center Content -->
+<div class="absolute inset-0 flex flex-col items-center justify-center pt-2">
+<span class="material-symbols-outlined text-amber-500 text-3xl mb-1">warning</span>
+<span class="font-headline-lg text-headline-lg text-on-surface leading-none">4.2m</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase mt-1">Est. Level</span>
+</div>
+</div>
+<!-- Status Badge -->
+<div class="mt-4 bg-amber-100 text-amber-800 px-4 py-2 rounded-full font-label-md font-bold flex items-center gap-2 border border-amber-200">
+<div class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                            WARNING STATUS
+                        </div>
+</div>
+<!-- AI Stats Box -->
+<div class="mt-lg bg-surface-container rounded-lg p-md border border-outline-variant">
+<div class="flex justify-between items-center mb-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">AI Confidence Score</span>
+<span class="font-data-mono text-data-mono text-on-surface font-bold">94%</span>
+</div>
+<div class="w-full bg-surface-variant rounded-full h-1.5 mb-md">
+<div class="bg-secondary-container h-1.5 rounded-full" style="width: 94%"></div>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Est. Water Coverage</span>
+<span class="font-data-mono text-data-mono text-on-surface font-bold">15%</span>
+</div>
+<div class="w-full bg-surface-variant rounded-full h-1.5 mt-sm">
+<div class="bg-tertiary-fixed-dim h-1.5 rounded-full" style="width: 15%"></div>
+</div>
+</div>
+<button class="mt-lg w-full bg-error text-on-error font-label-md py-3 rounded-lg flex items-center justify-center gap-sm hover:bg-error/90 transition-colors shadow-md">
+<span class="material-symbols-outlined">campaign</span>
+                        Issue Warning Alert
+                    </button>
+</div>
+</section>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AquaGuard - Prediction &amp; Alerts</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface": "#f7f9fb",
+                      "inverse-on-surface": "#eff1f3",
+                      "tertiary-fixed-dim": "#76d6d5",
+                      "on-background": "#191c1e",
+                      "surface-tint": "#525f77",
+                      "secondary": "#00677f",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary": "#ffffff",
+                      "background": "#f7f9fb",
+                      "surface-container-high": "#e6e8ea",
+                      "on-error-container": "#93000a",
+                      "on-tertiary-container": "#289291",
+                      "outline": "#75777d",
+                      "on-primary-fixed": "#0e1c31",
+                      "on-primary-fixed-variant": "#3a475e",
+                      "primary-fixed": "#d6e3ff",
+                      "tertiary-container": "#002020",
+                      "surface-container": "#eceef0",
+                      "primary-fixed-dim": "#bac7e3",
+                      "secondary-fixed-dim": "#47d6ff",
+                      "on-error": "#ffffff",
+                      "on-secondary-fixed-variant": "#004e60",
+                      "primary-container": "#0e1c31",
+                      "on-tertiary-fixed-variant": "#004f4f",
+                      "outline-variant": "#c5c6cd",
+                      "on-primary": "#ffffff",
+                      "surface-container-highest": "#e0e3e5",
+                      "on-surface": "#191c1e",
+                      "on-secondary-fixed": "#001f28",
+                      "surface-container-lowest": "#ffffff",
+                      "secondary-container": "#00d2ff",
+                      "on-primary-container": "#77849e",
+                      "tertiary": "#000000",
+                      "primary": "#000000",
+                      "error-container": "#ffdad6",
+                      "surface-dim": "#d8dadc",
+                      "on-surface-variant": "#44474d",
+                      "on-tertiary-fixed": "#002020",
+                      "surface-container-low": "#f2f4f6",
+                      "on-tertiary": "#ffffff",
+                      "on-secondary-container": "#00566a",
+                      "error": "#ba1a1a",
+                      "tertiary-fixed": "#93f2f2",
+                      "inverse-primary": "#bac7e3",
+                      "inverse-surface": "#2d3133",
+                      "secondary-fixed": "#b6ebff",
+                      "surface-bright": "#f7f9fb"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "margin": "32px",
+                      "gutter": "24px",
+                      "xl": "32px",
+                      "xs": "4px",
+                      "lg": "24px",
+                      "md": "16px",
+                      "base": "4px",
+                      "2xl": "48px"
+              },
+              "fontFamily": {
+                      "headline-lg-mobile": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "title-lg": ["Inter"],
+                      "label-md": ["Inter"],
+                      "display-lg": ["Inter"],
+                      "data-mono": ["Inter"],
+                      "body-md": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "label-sm": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "data-mono": ["14px", {"lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "500"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface antialiased">
+<!-- Alert Banner -->
+<div class="w-full bg-error text-on-error py-2 px-lg flex items-center justify-center gap-md z-50 relative animate-pulse">
+<span class="material-symbols-outlined" data-icon="warning" data-weight="fill" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="font-label-md text-label-md">CRITICAL: Station Alpha water levels exceeding safe thresholds. Evacuation recommended for Zone 4.</span>
+</div>
+<!-- TopAppBar -->
+<header class="docked top-0 w-full border-b border-outline-variant dark:border-outline flat no shadows flex justify-between items-center px-lg h-20 ml-72 max-w-[calc(100%-18rem)] bg-surface/80 dark:bg-inverse-surface/80 backdrop-blur-md z-40 fixed">
+<div class="hidden">
+<span class="font-headline-md text-headline-md font-bold text-on-surface dark:text-inverse-on-surface">AquaGuard</span>
+</div>
+<div class="flex items-center gap-md ml-auto">
+<button class="p-2 rounded-full hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-colors opacity-80 hover:opacity-100 text-secondary dark:text-secondary-fixed-dim">
+<span class="material-symbols-outlined" data-icon="schedule">schedule</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-colors opacity-80 hover:opacity-100 text-secondary dark:text-secondary-fixed-dim">
+<span class="material-symbols-outlined" data-icon="sensors">sensors</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-colors opacity-80 hover:opacity-100 text-secondary dark:text-secondary-fixed-dim relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-colors opacity-80 hover:opacity-100 text-secondary dark:text-secondary-fixed-dim">
+<span class="material-symbols-outlined" data-icon="dark_mode">dark_mode</span>
+</button>
+<div class="ml-4 w-10 h-10 rounded-full bg-surface-variant overflow-hidden border border-outline-variant">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="Professional headshot of a government emergency management officer in a well-lit modern command center. Light mode lighting, subtle blue hues in background. Calm and authoritative demeanor." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpNiLFQAxIXkVMQLk49WWIrOkeTQ8IK5nqU-WuXr5bQoED2Nn_j7rVUwGKHe2VrXEU1Byme8JQ5OhNxOLWg-xPwAZc7h1nx-zD8tp8KJDV-BAzjEx8H7E8nyXVUC5YK1hlr7H7pWcNL1B0v9TLI6l0mNCGpCJWfnt390PkH2mvKAavCpslbhfxWDiA-rnwJcwlyGl1hds7c1wHdxT5Ggm4-ByGoP7ycRfBcCSUSZLLcUqcvcm5aowiWqTnsKYVdYl-nHmxPy6vWJU"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full flex flex-col justify-between py-margin docked w-72 border-r border-outline-variant dark:border-outline shadow-sm dark:shadow-none bg-surface dark:bg-inverse-surface z-50">
+<div class="px-gutter">
+<div class="mb-xl flex items-center gap-md">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container" data-icon="water_drop">water_drop</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface dark:text-inverse-on-surface">AquaGuard</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Flood Monitoring System</p>
+</div>
+</div>
+<ul class="space-y-sm">
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                        Dashboard
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="sensors">sensors</span>
+                        Live Monitoring
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+                        Water Level History
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md bg-secondary-container dark:bg-on-secondary-fixed-variant text-on-secondary-container dark:text-secondary-fixed p-md rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="batch_prediction" data-weight="fill" style="font-variation-settings: 'FILL' 1;">batch_prediction</span>
+                        Prediction
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="cloud">cloud</span>
+                        Weather
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="notifications_active">notifications_active</span>
+                        Alerts
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="settings_input_component">settings_input_component</span>
+                        Monitoring Stations
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+                        Reports
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+                        Users
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                        Settings
+                    </a>
+</li>
+</ul>
+</div>
+<div class="px-gutter border-t border-outline-variant pt-lg mt-auto">
+<a class="flex items-center gap-md text-on-surface-variant dark:text-surface-variant p-md hover:bg-surface-container dark:hover:bg-surface-container-high transition-colors rounded-lg font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+                Logout
+            </a>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="ml-72 mt-20 p-gutter min-h-screen">
+<div class="flex items-center justify-between mb-xl">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">AI Predictive Analysis</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-2">12-Hour Forecast &amp; Risk Assessment</p>
+</div>
+<div class="flex gap-md">
+<button class="bg-surface border border-outline-variant text-on-surface px-lg py-sm rounded-lg font-label-md text-label-md hover:bg-surface-container transition-colors flex items-center gap-sm">
+<span class="material-symbols-outlined text-[18px]" data-icon="download">download</span>
+                    Export Report
+                </button>
+</div>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Main Chart Area -->
+<div class="col-span-12 xl:col-span-8 bg-surface-container-lowest rounded-xl border border-outline-variant p-lg shadow-[0px_4px_20px_rgba(11,25,46,0.05)] relative overflow-hidden flex flex-col min-h-[400px]">
+<div class="flex justify-between items-center mb-md border-b border-outline-variant pb-md">
+<h3 class="font-title-lg text-title-lg text-on-surface flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary" data-icon="timeline">timeline</span>
+                        Water Level Forecast
+                    </h3>
+<div class="flex gap-2">
+<span class="px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm">Next 12 Hours</span>
+</div>
+</div>
+<div class="flex-grow relative w-full h-full bg-surface-container-low/50 rounded-lg border border-outline-variant/50">
+<!-- Placeholder for chart. In a real app, this would be a canvas/svg drawn by a library -->
+<div class="absolute inset-0 flex items-center justify-center flex-col text-on-surface-variant">
+<span class="material-symbols-outlined text-[48px] opacity-20 mb-2" data-icon="show_chart">show_chart</span>
+<span class="font-label-md text-label-md opacity-50">Predictive Chart Data Visualization Area</span>
+</div>
+</div>
+</div>
+<!-- Side Cards -->
+<div class="col-span-12 xl:col-span-4 flex flex-col gap-gutter">
+<!-- Risk Probability Card -->
+<div class="bg-surface-container-lowest rounded-xl border border-error/30 p-lg shadow-[0px_4px_20px_rgba(11,25,46,0.05)] relative overflow-hidden">
+<div class="absolute top-0 left-0 w-1 h-full bg-error"></div>
+<h3 class="font-title-lg text-title-lg text-on-surface mb-md">Risk Probability</h3>
+<div class="flex items-end gap-sm mb-4">
+<span class="font-display-lg text-display-lg text-error">65%</span>
+<span class="font-body-lg text-body-lg text-on-surface-variant mb-2">Warning Level</span>
+</div>
+<div class="w-full bg-surface-variant rounded-full h-2 mb-2">
+<div class="bg-error h-2 rounded-full" style="width: 65%"></div>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant flex items-center gap-xs mt-4">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+                        Estimated impact by 10:00 PM today.
+                    </p>
+</div>
+<!-- Influence Factors -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-lg shadow-[0px_4px_20px_rgba(11,25,46,0.05)] flex-grow">
+<h3 class="font-title-lg text-title-lg text-on-surface mb-md border-b border-outline-variant pb-md">Influence Factors</h3>
+<ul class="space-y-4">
+<li class="flex items-center justify-between">
+<div class="flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-secondary-container/20 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]" data-icon="rainy">rainy</span>
+</div>
+<span class="font-body-md text-body-md text-on-surface">Rainfall Intensity</span>
+</div>
+<span class="px-2 py-1 rounded-md bg-error-container text-on-error-container font-label-sm text-label-sm font-bold">HIGH</span>
+</li>
+<li class="flex items-center justify-between">
+<div class="flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-secondary-container/20 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]" data-icon="water">water</span>
+</div>
+<span class="font-body-md text-body-md text-on-surface">Tidal Influence</span>
+</div>
+<span class="px-2 py-1 rounded-md bg-surface-container text-on-surface-variant font-label-sm text-label-sm">LOW</span>
+</li>
+</ul>
+</div>
+<!-- Action Card -->
+<div class="bg-primary-container rounded-xl border border-outline-variant p-lg shadow-[0px_4px_20px_rgba(11,25,46,0.05)]">
+<h3 class="font-title-lg text-title-lg text-on-primary-container mb-2 flex items-center gap-sm">
+<span class="material-symbols-outlined" data-icon="assignment_late">assignment_late</span>
+                        Recommended Action
+                    </h3>
+<p class="font-body-md text-body-md text-on-primary-container/80 mb-md">
+                        Notify Barangay Officers in Zone 4 to prepare for potential localized flooding.
+                    </p>
+<button class="w-full bg-error text-on-error py-2 rounded-lg font-label-md text-label-md hover:bg-error/90 transition-colors flex items-center justify-center gap-sm">
+<span class="material-symbols-outlined text-[18px]" data-icon="campaign">campaign</span>
+                        Issue Warning Now
+                    </button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

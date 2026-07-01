@@ -437,3 +437,152 @@
     height: 310px;
   }
 }
+
+/* AquaGuard precision UI refresh. */
+.prediction-page {
+  gap: 18px;
+  padding: 22px 28px 34px;
+  background: #f7f9fb;
+  color: #191c1e;
+}
+
+.prediction-toolbar,
+.prediction-stat-card,
+.prediction-chart-card,
+.prediction-note {
+  border-color: #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(11, 25, 46, 0.06);
+}
+
+.prediction-toolbar {
+  grid-template-columns: minmax(220px, 0.75fr) minmax(220px, 1fr) auto;
+  padding: 18px;
+}
+
+.prediction-toolbar select,
+.prediction-toolbar button {
+  border-radius: 8px;
+}
+
+.prediction-toolbar select {
+  border-color: #c5cbd3;
+  background: #ffffff;
+}
+
+.prediction-toolbar select:focus {
+  border-color: #00c7eb;
+  box-shadow: 0 0 0 3px rgba(0, 199, 235, 0.14);
+}
+
+.prediction-toolbar button {
+  border-color: #0b192e;
+  background: #0b192e;
+}
+
+.prediction-eyebrow {
+  color: #5f6670;
+  letter-spacing: 0.07em;
+}
+
+.prediction-location strong,
+.prediction-section-header h3,
+.prediction-stat-card strong {
+  color: #11161c;
+}
+
+.prediction-main-risk {
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(11, 25, 46, 0.06);
+}
+
+.prediction-main-risk h2 {
+  letter-spacing: 0;
+}
+
+.prediction-risk-low {
+  border-color: rgba(15, 159, 114, 0.28);
+  color: #0f766e;
+  background: #f0fbf7;
+}
+
+.prediction-risk-moderate {
+  border-color: rgba(245, 158, 11, 0.32);
+  color: #9a5f00;
+  background: #fff8e8;
+}
+
+.prediction-risk-high {
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #9a3f00;
+  background: #fff3d9;
+}
+
+.prediction-risk-critical {
+  border-left: 4px solid #c5161d;
+  border-color: rgba(197, 22, 29, 0.3);
+  color: #a20f17;
+  background: #fee8e8;
+}
+
+.prediction-risk-icon {
+  border-radius: 8px;
+}
+
+.prediction-stat-grid,
+.prediction-horizon-grid {
+  gap: 18px;
+}
+
+.prediction-stat-card {
+  min-height: 128px;
+  padding: 20px;
+}
+
+.prediction-stat-icon {
+  border-radius: 8px;
+  color: #00677f;
+  background: #d8f7fd;
+}
+
+.prediction-horizon-card {
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(11, 25, 46, 0.05);
+}
+
+.prediction-chart-card {
+  overflow: hidden;
+}
+
+.prediction-section-header {
+  border-color: #e2e8f0;
+}
+
+.prediction-thresholds span {
+  border-color: #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.prediction-chart {
+  height: 400px;
+  padding: 18px 16px 10px 4px;
+}
+
+.prediction-note {
+  color: #0b5d73;
+  background: #f4fcfd;
+}
+
+@media (max-width: 850px) {
+  .prediction-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .prediction-page {
+    padding: 16px;
+  }
+}
