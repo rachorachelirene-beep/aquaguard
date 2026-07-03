@@ -52,6 +52,7 @@ CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "720"))
 CAMERA_FPS = int(os.getenv("CAMERA_FPS", "30"))
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "80"))
 STREAM_FPS = max(1, int(os.getenv("STREAM_FPS", "12")))
+RTSP_FRAME_SKIP = max(0, int(os.getenv("RTSP_FRAME_SKIP", "2")))
 
 PROCESSING_WIDTH = int(os.getenv("PROCESSING_WIDTH", str(CAMERA_WIDTH)))
 PROCESSING_HEIGHT = int(os.getenv("PROCESSING_HEIGHT", str(CAMERA_HEIGHT)))
@@ -1339,7 +1340,21 @@ def camera_capture_loop() -> None:
 
             while not stop_event.is_set():
                 loop_started = time.perf_counter()
-                success, frame = capture.read()
+                if CAMERA_SOURCE == "rtsp" and RTSP_FRAME_SKIP > 0:
+                    grabbed_frame = False
+
+                    for _ in range(RTSP_FRAME_SKIP):
+                        if capture.grab():
+                            grabbed_frame = True
+                        else:
+                            break
+
+                    if grabbed_frame:
+                        success, frame = capture.retrieve()
+                    else:
+                        success, frame = capture.read()
+                else:
+                    success, frame = capture.read()
 
                 if not success or frame is None:
                     raise RuntimeError(
