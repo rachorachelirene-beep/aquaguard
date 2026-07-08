@@ -39,6 +39,7 @@ const cameraApiUrl =
 
 const defaultSettings = {
   camera_source: "webcam",
+  camera_fallback_to_webcam: "true",
   camera_index: "0",
   camera_ip: "",
   camera_stream_path: "/stream1",
@@ -744,6 +745,7 @@ export default function CameraSettings() {
     useMemo(() => {
       const lines = [
         `CAMERA_SOURCE=${settings.camera_source}`,
+        `CAMERA_FALLBACK_TO_WEBCAM=${settings.camera_fallback_to_webcam}`,
         `CAMERA_INDEX=${settings.camera_index}`,
         `CAMERA_WIDTH=${settings.camera_width}`,
         `CAMERA_HEIGHT=${settings.camera_height}`,
@@ -957,8 +959,10 @@ export default function CameraSettings() {
             connectedText="Connected"
             disconnectedText="Disconnected"
             description={
-              health?.camera_source
-                ? `Source: ${health.camera_source}`
+              health?.active_camera_source
+                ? `Active: ${health.active_camera_source}`
+                : health?.camera_source
+                ? `Configured: ${health.camera_source}`
                 : "No camera connection"
             }
           />

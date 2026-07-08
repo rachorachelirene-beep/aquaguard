@@ -45,6 +45,11 @@ CAMERA_SOURCE = os.getenv(
     "webcam",
 ).strip().lower()
 
+CAMERA_FALLBACK_TO_WEBCAM = env_bool(
+    "CAMERA_FALLBACK_TO_WEBCAM",
+    True,
+)
+
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 
 CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "1280"))
@@ -183,6 +188,7 @@ latest_water_mask: np.ndarray | None = None
 
 camera_connected = False
 camera_error: str | None = None
+active_camera_source: str | None = None
 
 capture_thread: threading.Thread | None = None
 stop_event = threading.Event()
@@ -475,85 +481,134 @@ def try_webcam(
     return capture
 
 
-def open_camera() -> cv2.VideoCapture:
-    if CAMERA_SOURCE == "webcam":
-        print("Searching for an available webcam...")
+def open_webcam() -> cv2.VideoCapture:
+    global active_camera_source
 
-        camera_indices = [
-            CAMERA_INDEX,
-            *[
-                index
-                for index in range(5)
-                if index != CAMERA_INDEX
-            ],
+    print("Searching for an available webcam or USB camera...")
+
+    camera_indices = [
+        CAMERA_INDEX,
+        *[
+            index
+            for index in range(5)
+            if index != CAMERA_INDEX
+        ],
+    ]
+
+    if os.name == "nt":
+        backends = [
+            ("DSHOW", cv2.CAP_DSHOW),
+            ("MSMF", cv2.CAP_MSMF),
+            ("AUTO", cv2.CAP_ANY),
+        ]
+    else:
+        backends = [
+            ("AUTO", cv2.CAP_ANY),
         ]
 
-        if os.name == "nt":
-            backends = [
-                ("DSHOW", cv2.CAP_DSHOW),
-                ("MSMF", cv2.CAP_MSMF),
-                ("AUTO", cv2.CAP_ANY),
-            ]
-        else:
-            backends = [
-                ("AUTO", cv2.CAP_ANY),
-            ]
+    for camera_index in camera_indices:
+        for backend_name, backend in backends:
+            print(
+                f"Trying webcam index {camera_index} "
+                f"using {backend_name}..."
+            )
 
-        for camera_index in camera_indices:
-            for backend_name, backend in backends:
+            capture = try_webcam(
+                camera_index,
+                backend,
+            )
+
+            if capture is not None:
+                active_camera_source = "webcam"
+
                 print(
-                    f"Trying webcam index {camera_index} "
-                    f"using {backend_name}..."
+                    f"Webcam found at index {camera_index} "
+                    f"using {backend_name}."
                 )
 
-                capture = try_webcam(
-                    camera_index,
-                    backend,
-                )
+                return capture
 
-                if capture is not None:
-                    print(
-                        f"Webcam found at index {camera_index} "
-                        f"using {backend_name}."
-                    )
+    raise RuntimeError(
+        "No usable webcam or USB camera was found."
+    )
 
-                    return capture
 
+def open_rtsp_camera() -> cv2.VideoCapture:
+    global active_camera_source
+
+    rtsp_url = build_rtsp_url()
+
+    print("Opening Tapo RTSP camera...")
+
+    capture = cv2.VideoCapture(
+        rtsp_url,
+        cv2.CAP_FFMPEG,
+    )
+
+    capture.set(
+        cv2.CAP_PROP_BUFFERSIZE,
+        1,
+    )
+
+    capture.set(
+        cv2.CAP_PROP_FRAME_WIDTH,
+        CAMERA_WIDTH,
+    )
+
+    capture.set(
+        cv2.CAP_PROP_FRAME_HEIGHT,
+        CAMERA_HEIGHT,
+    )
+
+    capture.set(
+        cv2.CAP_PROP_FPS,
+        CAMERA_FPS,
+    )
+
+    if not capture.isOpened():
+        capture.release()
         raise RuntimeError(
-            "No usable webcam was found."
+            "OpenCV could not open the RTSP camera."
         )
+
+    success, frame = capture.read()
+
+    if not success or frame is None:
+        capture.release()
+        raise RuntimeError(
+            "RTSP camera opened but returned no frames."
+        )
+
+    try:
+        normalize_camera_frame(frame)
+    except Exception as error:
+        capture.release()
+        raise RuntimeError(
+            f"RTSP camera returned an invalid frame: {error}"
+        ) from error
+
+    active_camera_source = "rtsp"
+
+    return capture
+
+
+def open_camera() -> cv2.VideoCapture:
+    if CAMERA_SOURCE == "webcam":
+        return open_webcam()
 
     if CAMERA_SOURCE == "rtsp":
-        rtsp_url = build_rtsp_url()
+        try:
+            return open_rtsp_camera()
+        except Exception as error:
+            if not CAMERA_FALLBACK_TO_WEBCAM:
+                raise
 
-        print("Opening Tapo RTSP camera...")
+            print(
+                "RTSP camera unavailable; "
+                f"switching to webcam fallback. Reason: {error}"
+            )
 
-        capture = cv2.VideoCapture(
-            rtsp_url,
-            cv2.CAP_FFMPEG,
-        )
-
-        capture.set(
-            cv2.CAP_PROP_BUFFERSIZE,
-            1,
-        )
-
-        capture.set(
-            cv2.CAP_PROP_FRAME_WIDTH,
-            CAMERA_WIDTH,
-        )
-
-        capture.set(
-            cv2.CAP_PROP_FRAME_HEIGHT,
-            CAMERA_HEIGHT,
-        )
-
-        capture.set(
-            cv2.CAP_PROP_FPS,
-            CAMERA_FPS,
-        )
-
-        return capture
+            return open_webcam()
 
     raise RuntimeError(
         "Invalid CAMERA_SOURCE. "
@@ -567,9 +622,13 @@ def update_camera_state(
 ) -> None:
     global camera_connected
     global camera_error
+    global active_camera_source
 
     camera_connected = connected
     camera_error = error
+
+    if not connected:
+        active_camera_source = None
 
 
 # =========================================================
@@ -1340,7 +1399,7 @@ def camera_capture_loop() -> None:
 
             while not stop_event.is_set():
                 loop_started = time.perf_counter()
-                if CAMERA_SOURCE == "rtsp" and RTSP_FRAME_SKIP > 0:
+                if active_camera_source == "rtsp" and RTSP_FRAME_SKIP > 0:
                     grabbed_frame = False
 
                     for _ in range(RTSP_FRAME_SKIP):
@@ -1546,6 +1605,8 @@ def index():
             "name": "AquaGuard Camera API",
             "status": "running",
             "camera_source": CAMERA_SOURCE,
+            "active_camera_source": active_camera_source,
+            "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "video_endpoint": "/video_feed",
             "health_endpoint": "/health",
             "detection_endpoint": "/latest_detection",
@@ -1569,6 +1630,8 @@ def health():
             "running": True,
             "station_id": station_id,
             "camera_source": CAMERA_SOURCE,
+            "active_camera_source": active_camera_source,
+            "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "camera_connected": camera_connected,
             "latest_frame_at": latest_frame_at,
             "camera_error": camera_error,
@@ -1602,6 +1665,9 @@ def get_latest_detection():
     response_data.update(
         {
             "camera_connected": camera_connected,
+            "camera_source": CAMERA_SOURCE,
+            "active_camera_source": active_camera_source,
+            "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "latest_frame_at": latest_frame_at,
             "camera_error": camera_error,
             "yolo_loaded": yolo_model is not None,

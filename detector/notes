@@ -1,0 +1,5 @@
+# Start frontend
+npm run dev
+
+# Start detector/camera service
+.\start-detector.bat
