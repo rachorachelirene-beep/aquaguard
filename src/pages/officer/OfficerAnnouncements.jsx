@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -26,10 +33,11 @@ export default function OfficerAnnouncements() {
   const [actionLoading, setActionLoading] = useState("");
   const [searchText, setSearchText] = useState("");
   const [flash, setFlash] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState(null);
   const [announcementToDelete, setAnnouncementToDelete] =
     useState(null);
   const [form, setForm] = useState({
+    id: "",
     title: "",
     body: "",
   });
@@ -37,7 +45,6 @@ export default function OfficerAnnouncements() {
   const loadAnnouncements = useCallback(async () => {
     try {
       setLoading(true);
-      setFlash(null);
 
       const { data, error } = await supabase
         .from("announcements")
@@ -54,7 +61,7 @@ export default function OfficerAnnouncements() {
       console.error("Announcements loading error:", error);
       setFlash({
         type: "error",
-        text: error.message || "Unable to load announcements.",
+        text: "Unable to load announcements. Check your connection and try again.",
       });
     } finally {
       setLoading(false);
@@ -96,29 +103,70 @@ export default function OfficerAnnouncements() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setActionLoading("create");
-    setFlash(null);
 
-    const { error } = await supabase.from("announcements").insert({
-      title: form.title.trim(),
-      body: form.body.trim(),
-      created_by: profile?.id ?? null,
-    });
+    const title = form.title.trim();
+    const body = form.body.trim();
 
-    setActionLoading("");
-
-    if (error) {
+    if (title.length < 3 || body.length < 10) {
       setFlash({
         type: "error",
-        text: error.message || "Unable to publish announcement.",
+        text: "Enter a title of at least 3 characters and a message of at least 10 characters.",
       });
       return;
     }
 
-    setForm({ title: "", body: "" });
-    setModalOpen(false);
-    setFlash({ type: "success", text: "Announcement published." });
+    setActionLoading("create");
+    setFlash(null);
+
+    const result =
+      modalMode === "edit"
+        ? await supabase
+            .from("announcements")
+            .update({ title, body })
+            .eq("id", form.id)
+            .eq("created_by", profile?.id)
+        : await supabase.from("announcements").insert({
+            title,
+            body,
+            created_by: profile?.id ?? null,
+          });
+
+    setActionLoading("");
+
+    if (result.error) {
+      setFlash({
+        type: "error",
+        text:
+          result.error.message ||
+          `Unable to ${modalMode === "edit" ? "update" : "publish"} announcement.`,
+      });
+      return;
+    }
+
+    const wasEditing = modalMode === "edit";
+    setForm({ id: "", title: "", body: "" });
+    setModalMode(null);
+    setFlash({
+      type: "success",
+      text: wasEditing
+        ? "Announcement updated."
+        : "Announcement published.",
+    });
     await loadAnnouncements();
+  }
+
+  function openCreateModal() {
+    setForm({ id: "", title: "", body: "" });
+    setModalMode("create");
+  }
+
+  function openEditModal(announcement) {
+    setForm({
+      id: String(announcement.id),
+      title: announcement.title ?? "",
+      body: announcement.body ?? "",
+    });
+    setModalMode("edit");
   }
 
   async function deleteAnnouncement() {
@@ -132,7 +180,8 @@ export default function OfficerAnnouncements() {
     const { error } = await supabase
       .from("announcements")
       .delete()
-      .eq("id", announcementToDelete.id);
+      .eq("id", announcementToDelete.id)
+      .eq("created_by", profile?.id);
 
     setActionLoading("");
 
@@ -168,7 +217,7 @@ export default function OfficerAnnouncements() {
             <button
               className="btn-submit officer-title-action"
               type="button"
-              onClick={() => setModalOpen(true)}
+              onClick={openCreateModal}
             >
               <Plus size={16} />
               New Announcement
@@ -257,16 +306,32 @@ export default function OfficerAnnouncements() {
                           : "Officer"}
                       </td>
                       <td>
-                        <button
-                          className="btn-danger officer-icon-button"
-                          type="button"
-                          onClick={() =>
-                            setAnnouncementToDelete(announcement)
-                          }
-                        >
-                          <Trash2 size={15} />
-                          Delete
-                        </button>
+                        {announcement.created_by === profile?.id ? (
+                          <div className="officer-table-actions">
+                            <button
+                              className="btn-cancel officer-icon-button"
+                              type="button"
+                              onClick={() => openEditModal(announcement)}
+                            >
+                              <Pencil size={15} />
+                              Edit
+                            </button>
+                            <button
+                              className="btn-danger officer-icon-button"
+                              type="button"
+                              onClick={() =>
+                                setAnnouncementToDelete(announcement)
+                              }
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="officer-table-subtext">
+                            Read only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -277,15 +342,19 @@ export default function OfficerAnnouncements() {
         </section>
       </main>
 
-      {modalOpen && (
+      {modalMode && (
         <div className="modal-overlay">
           <div className="modal-box">
             <div className="modal-header">
-              <span>New Announcement</span>
+              <span>
+                {modalMode === "edit"
+                  ? "Edit Announcement"
+                  : "New Announcement"}
+              </span>
               <button
                 className="modal-close"
                 type="button"
-                onClick={() => setModalOpen(false)}
+                onClick={() => setModalMode(null)}
               >
                 x
               </button>
@@ -307,6 +376,8 @@ export default function OfficerAnnouncements() {
                   }))
                 }
                 required
+                minLength="3"
+                maxLength="160"
               />
 
               <label className="form-label" htmlFor="announcement-body">
@@ -324,13 +395,15 @@ export default function OfficerAnnouncements() {
                   }))
                 }
                 required
+                minLength="10"
+                maxLength="2000"
               />
 
               <div className="modal-footer">
                 <button
                   className="btn-cancel"
                   type="button"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setModalMode(null)}
                 >
                   Cancel
                 </button>
@@ -339,7 +412,11 @@ export default function OfficerAnnouncements() {
                   type="submit"
                   disabled={actionLoading === "create"}
                 >
-                  {actionLoading === "create" ? "Publishing..." : "Publish"}
+                  {actionLoading === "create"
+                    ? "Saving..."
+                    : modalMode === "edit"
+                      ? "Save changes"
+                      : "Publish"}
                 </button>
               </div>
             </form>

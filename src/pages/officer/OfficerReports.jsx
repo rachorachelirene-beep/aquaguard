@@ -23,7 +23,29 @@ function formatDateTime(value) {
   });
 }
 
+function formatPercent(value) {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+
+  const numeric = toNumber(value, null);
+
+  if (numeric == null) {
+    return "--";
+  }
+
+  return `${Math.round(numeric <= 1 ? numeric * 100 : numeric)}%`;
+}
+
 function getStatus(level, station) {
+  if (level === null || level === undefined || level === "") {
+    return {
+      key: "no_data",
+      label: "No data",
+      badge: "badge-gray",
+    };
+  }
+
   const numericLevel = toNumber(level);
   const warningLevel = toNumber(station?.warning_level, 2);
   const criticalLevel = toNumber(station?.critical_level, 2.5);
@@ -59,6 +81,7 @@ export default function OfficerReports() {
   const [stations, setStations] = useState([]);
   const [readings, setReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [detections, setDetections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState(null);
   const [searchText, setSearchText] = useState("");
@@ -69,7 +92,12 @@ export default function OfficerReports() {
       setLoading(true);
       setFlash(null);
 
-      const [stationsResult, readingsResult, alertsResult] =
+      const [
+        stationsResult,
+        readingsResult,
+        alertsResult,
+        detectionsResult,
+      ] =
         await Promise.all([
           supabase
             .from("stations")
@@ -87,12 +115,20 @@ export default function OfficerReports() {
             .select("id, type, is_resolved, created_at")
             .order("created_at", { ascending: false })
             .limit(1000),
+          supabase
+            .from("yolo_detections")
+            .select(
+              "id, station_id, level_m, confidence, water_coverage, flood_risk, detected_at"
+            )
+            .order("detected_at", { ascending: false })
+            .limit(500),
         ]);
 
       const firstError = [
         stationsResult.error,
         readingsResult.error,
         alertsResult.error,
+        detectionsResult.error,
       ].find(Boolean);
 
       if (firstError) {
@@ -102,11 +138,12 @@ export default function OfficerReports() {
       setStations(stationsResult.data ?? []);
       setReadings(readingsResult.data ?? []);
       setAlerts(alertsResult.data ?? []);
+      setDetections(detectionsResult.data ?? []);
     } catch (error) {
       console.error("Officer reports loading error:", error);
       setFlash({
         type: "error",
-        text: error.message || "Unable to load reports.",
+        text: "Unable to load monitoring reports. Check your connection and try again.",
       });
     } finally {
       setLoading(false);
@@ -123,6 +160,7 @@ export default function OfficerReports() {
 
   const reportRows = useMemo(() => {
     const latestByStation = new Map();
+    const latestDetectionByStation = new Map();
 
     readings.forEach((reading) => {
       const key = String(reading.station_id);
@@ -132,17 +170,30 @@ export default function OfficerReports() {
       }
     });
 
+    detections.forEach((detection) => {
+      const key = String(detection.station_id);
+
+      if (!latestDetectionByStation.has(key)) {
+        latestDetectionByStation.set(key, detection);
+      }
+    });
+
     return stations.map((station) => {
       const reading = latestByStation.get(String(station.id)) ?? null;
-      const status = getStatus(reading?.level_m, station);
+      const detection =
+        latestDetectionByStation.get(String(station.id)) ?? null;
+      const currentLevel = detection?.level_m ?? reading?.level_m;
+      const status = getStatus(currentLevel, station);
 
       return {
         station,
         reading,
+        detection,
+        currentLevel,
         status,
       };
     });
-  }, [stations, readings]);
+  }, [stations, readings, detections]);
 
   const filteredRows = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -179,13 +230,21 @@ export default function OfficerReports() {
       "Station",
       "Level (m)",
       "Rainfall (mm)",
+      "AI Confidence",
+      "Water Coverage",
+      "Flood Risk",
+      "Latest Detection",
       "Last Reading",
       "Status",
     ];
     const csvRows = filteredRows.map((row) => [
       row.station.name,
-      row.reading ? toNumber(row.reading.level_m).toFixed(2) : "",
+      row.currentLevel != null ? toNumber(row.currentLevel).toFixed(2) : "",
       row.reading ? toNumber(row.reading.rainfall_mm).toFixed(1) : "",
+      formatPercent(row.detection?.confidence),
+      formatPercent(row.detection?.water_coverage),
+      formatPercent(row.detection?.flood_risk),
+      row.detection ? formatDateTime(row.detection.detected_at) : "",
       row.reading ? formatDateTime(row.reading.recorded_at) : "",
       row.status.label,
     ]);
@@ -221,7 +280,7 @@ export default function OfficerReports() {
       )}
 
       <main className="page-content officer-page">
-        <section className="stat-cards officer-stat-strip">
+        <section className="stat-cards officer-stat-strip officer-report-stats">
           <div className="stat-card">
             <div className="stat-header">
               <span className="stat-label">TOTAL STATIONS</span>
@@ -247,6 +306,15 @@ export default function OfficerReports() {
             </div>
             <div className="stat-value red">{activeAlerts}</div>
             <div className="stat-sub">UNRESOLVED</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-label">AI DETECTIONS</span>
+              <span className="stat-icon blue">AI</span>
+            </div>
+            <div className="stat-value blue">{detections.length}</div>
+            <div className="stat-sub">RECENT YOLO RECORDS</div>
           </div>
         </section>
 
@@ -285,6 +353,7 @@ export default function OfficerReports() {
               <option value="critical">Critical</option>
               <option value="warning">Warning</option>
               <option value="normal">Normal</option>
+              <option value="no_data">No Data</option>
             </select>
 
             {hasFilters && (
@@ -324,6 +393,10 @@ export default function OfficerReports() {
                   <th>Station</th>
                   <th>Level (m)</th>
                   <th>Rainfall (mm)</th>
+                  <th>AI Confidence</th>
+                  <th>Coverage</th>
+                  <th>Flood Risk</th>
+                  <th>Latest Detection</th>
                   <th>Last Reading</th>
                   <th>Status</th>
                 </tr>
@@ -332,13 +405,13 @@ export default function OfficerReports() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="officer-table-empty">
+                    <td colSpan="9" className="officer-table-empty">
                       Loading report...
                     </td>
                   </tr>
                 ) : filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="officer-table-empty">
+                    <td colSpan="9" className="officer-table-empty">
                       No report records found.
                     </td>
                   </tr>
@@ -352,14 +425,22 @@ export default function OfficerReports() {
                         </small>
                       </td>
                       <td>
-                        {row.reading
-                          ? toNumber(row.reading.level_m).toFixed(2)
+                        {row.currentLevel != null
+                          ? toNumber(row.currentLevel).toFixed(2)
                           : "--"}
                       </td>
                       <td>
                         {row.reading
                           ? toNumber(row.reading.rainfall_mm).toFixed(1)
                           : "--"}
+                      </td>
+                      <td>{formatPercent(row.detection?.confidence)}</td>
+                      <td>{formatPercent(row.detection?.water_coverage)}</td>
+                      <td>{formatPercent(row.detection?.flood_risk)}</td>
+                      <td>
+                        {row.detection
+                          ? formatDateTime(row.detection.detected_at)
+                          : "No AI data"}
                       </td>
                       <td>
                         {row.reading

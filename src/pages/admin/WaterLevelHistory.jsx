@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   CalendarDays,
@@ -145,7 +146,12 @@ function getDateBoundary(dateValue, endOfDay = false) {
 }
 
 
-export default function WaterLevelHistory() {
+export default function WaterLevelHistory({
+  title = "Water Level History",
+  description = "Historical water-level readings and station trends",
+}) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedStationId = searchParams.get("station_id");
   const [stations, setStations] = useState([]);
   const [selectedStationId, setSelectedStationId] =
     useState("");
@@ -245,6 +251,16 @@ export default function WaterLevelHistory() {
           return currentValue;
         }
 
+        if (
+          requestedStationId &&
+          stationRows.some(
+            (station) =>
+              String(station.id) === String(requestedStationId)
+          )
+        ) {
+          return String(requestedStationId);
+        }
+
         return stationRows[0]?.id
           ? String(stationRows[0].id)
           : "";
@@ -262,7 +278,7 @@ export default function WaterLevelHistory() {
     } finally {
       setStationLoading(false);
     }
-  }, []);
+  }, [requestedStationId]);
 
 
   const loadHistory = useCallback(async () => {
@@ -337,12 +353,16 @@ export default function WaterLevelHistory() {
 
 
   useEffect(() => {
-    loadStations();
+    const timeout = window.setTimeout(loadStations, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [loadStations]);
 
 
   useEffect(() => {
-    loadHistory();
+    const timeout = window.setTimeout(loadHistory, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [loadHistory]);
 
 
@@ -440,11 +460,25 @@ export default function WaterLevelHistory() {
     setEndDate("");
   }
 
+  function selectStation(stationId) {
+    setSelectedStationId(stationId);
+
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (stationId) {
+      nextParams.set("station_id", stationId);
+    } else {
+      nextParams.delete("station_id");
+    }
+
+    setSearchParams(nextParams, { replace: true });
+  }
+
 
   return (
     <DashboardLayout
-      title="Water Level History"
-      description="Historical water-level readings and station trends"
+      title={title}
+      description={description}
     >
       <main className="history-page">
         {errorMessage && (
@@ -476,11 +510,7 @@ export default function WaterLevelHistory() {
 
             <select
               value={selectedStationId}
-              onChange={(event) =>
-                setSelectedStationId(
-                  event.target.value
-                )
-              }
+              onChange={(event) => selectStation(event.target.value)}
               disabled={stationLoading}
             >
               {filteredStations.length ===
@@ -925,7 +955,7 @@ export default function WaterLevelHistory() {
                       colSpan="4"
                       className="history-table-empty"
                     >
-                      No history records found.
+                      No water-level readings available.
                     </td>
                   </tr>
                 ) : (

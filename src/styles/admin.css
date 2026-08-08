@@ -1459,7 +1459,22 @@
   margin-top: 12px;
 }
 
+.officer-alert-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.officer-alert-badges .badge {
+  text-transform: capitalize;
+}
+
 .officer-alert-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.officer-report-stats {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 

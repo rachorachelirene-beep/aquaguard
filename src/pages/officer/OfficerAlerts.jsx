@@ -39,16 +39,18 @@ export default function OfficerAlerts() {
   const [alerts, setAlerts] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [actionLoading, setActionLoading] = useState("");
   const [flash, setFlash] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [statusFilter, setStatusFilter] = useState("unresolved");
 
   const loadAlerts = useCallback(async () => {
     try {
       setLoading(true);
       setFlash(null);
+      setLoadError("");
 
       const [alertsResult, stationsResult] = await Promise.all([
         supabase
@@ -76,10 +78,9 @@ export default function OfficerAlerts() {
       setStations(stationsResult.data ?? []);
     } catch (error) {
       console.error("Officer alerts loading error:", error);
-      setFlash({
-        type: "error",
-        text: error.message || "Unable to load alerts.",
-      });
+      setLoadError(
+        "Unable to load barangay alerts. Check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -135,7 +136,7 @@ export default function OfficerAlerts() {
         typeFilter === "all" || alert.type === typeFilter;
       const matchesStatus =
         statusFilter === "all" ||
-        (statusFilter === "active" && !alert.is_resolved) ||
+        (statusFilter === "unresolved" && !alert.is_resolved) ||
         (statusFilter === "resolved" && alert.is_resolved) ||
         (statusFilter === "unread" && !alert.is_read);
 
@@ -184,11 +185,11 @@ export default function OfficerAlerts() {
   function clearFilters() {
     setSearchText("");
     setTypeFilter("all");
-    setStatusFilter("active");
+    setStatusFilter("unresolved");
   }
 
   const hasFilters =
-    searchText || typeFilter !== "all" || statusFilter !== "active";
+    searchText || typeFilter !== "all" || statusFilter !== "unresolved";
 
   return (
     <DashboardLayout
@@ -284,7 +285,7 @@ export default function OfficerAlerts() {
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
             >
-              <option value="active">Active</option>
+              <option value="unresolved">Unresolved</option>
               <option value="all">All Alerts</option>
               <option value="unread">Unread</option>
               <option value="resolved">Resolved</option>
@@ -310,8 +311,21 @@ export default function OfficerAlerts() {
           <div className="resident-card-grid">
             {loading ? (
               <div className="dashboard-empty">Loading alerts...</div>
+            ) : loadError ? (
+              <div className="dashboard-empty error">
+                <strong>{loadError}</strong>
+                <button
+                  className="btn-submit officer-icon-button"
+                  type="button"
+                  onClick={loadAlerts}
+                >
+                  Try again
+                </button>
+              </div>
             ) : filteredAlerts.length === 0 ? (
-              <div className="dashboard-empty">No alerts found.</div>
+              <div className="dashboard-empty">
+                No alerts match the selected filters.
+              </div>
             ) : (
               filteredAlerts.map((alert) => {
                 const station = stationMap.get(String(alert.station_id));
@@ -325,10 +339,39 @@ export default function OfficerAlerts() {
                     <div className="alert-time">
                       {formatDateTime(alert.created_at)}
                     </div>
+                    <div className="officer-alert-badges">
+                      <span className={`badge ${
+                        alert.type === "critical"
+                          ? "badge-red"
+                          : alert.type === "warning"
+                            ? "badge-orange"
+                            : "badge-blue"
+                      }`}>
+                        {alert.type ?? "Alert"}
+                      </span>
+                      <span
+                        className={`badge ${
+                          alert.is_read ? "badge-gray" : "badge-blue"
+                        }`}
+                      >
+                        {alert.is_read ? "Read" : "Unread"}
+                      </span>
+                      <span
+                        className={`badge ${
+                          alert.is_resolved ? "badge-green" : "badge-orange"
+                        }`}
+                      >
+                        {alert.is_resolved ? "Resolved" : "Unresolved"}
+                      </span>
+                    </div>
                     <div className="alert-title">{alert.title}</div>
                     <div className="alert-body">{alert.message}</div>
                     <div className="officer-table-subtext">
                       {station?.name ?? "General alert"}
+                      {station?.location ? ` · ${station.location}` : ""}
+                      {station?.station_code
+                        ? ` · ${station.station_code}`
+                        : ""}
                     </div>
                     <div className="officer-table-actions officer-alert-actions">
                       <button
@@ -350,7 +393,7 @@ export default function OfficerAlerts() {
                         ) : (
                           <Eye size={15} />
                         )}
-                        {alert.is_read ? "Unread" : "Read"}
+                        {alert.is_read ? "Mark unread" : "Acknowledge"}
                       </button>
 
                       <button

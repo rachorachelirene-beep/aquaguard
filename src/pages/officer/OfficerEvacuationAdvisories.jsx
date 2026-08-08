@@ -59,7 +59,6 @@ export default function OfficerEvacuationAdvisories() {
   const loadAdvisories = useCallback(async () => {
     try {
       setLoading(true);
-      setFlash(null);
 
       const { data, error } = await supabase
         .from("evacuation_advisories")
@@ -78,7 +77,7 @@ export default function OfficerEvacuationAdvisories() {
       console.error("Evacuation advisories loading error:", error);
       setFlash({
         type: "error",
-        text: error.message || "Unable to load evacuation advisories.",
+        text: "Unable to load evacuation advisories. Check your connection and try again.",
       });
     } finally {
       setLoading(false);
@@ -134,14 +133,27 @@ export default function OfficerEvacuationAdvisories() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+
+    const title = form.title.trim();
+    const area = form.area.trim();
+    const details = form.details.trim();
+
+    if (title.length < 3 || area.length < 3 || details.length < 10) {
+      setFlash({
+        type: "error",
+        text: "Enter a title and affected area of at least 3 characters, plus instructions of at least 10 characters.",
+      });
+      return;
+    }
+
     setActionLoading("create");
     setFlash(null);
 
     const payload = {
-      title: form.title.trim(),
-      area: form.area.trim(),
+      title,
+      area,
       level: form.level,
-      details: form.details.trim(),
+      details,
       is_active: true,
     };
 
@@ -174,13 +186,14 @@ export default function OfficerEvacuationAdvisories() {
     await loadAdvisories();
   }
 
-  async function deactivateAdvisory(advisory) {
-    setActionLoading(`deactivate-${advisory.id}`);
+  async function toggleAdvisoryStatus(advisory) {
+    const nextActive = !advisory.is_active;
+    setActionLoading(`status-${advisory.id}`);
     setFlash(null);
 
     const { error } = await supabase
       .from("evacuation_advisories")
-      .update({ is_active: false })
+      .update({ is_active: nextActive })
       .eq("id", advisory.id);
 
     setActionLoading("");
@@ -188,17 +201,24 @@ export default function OfficerEvacuationAdvisories() {
     if (error) {
       setFlash({
         type: "error",
-        text: error.message || "Unable to deactivate advisory.",
+        text: error.message || "Unable to update advisory status.",
       });
       return;
     }
 
     setAdvisories((current) =>
       current.map((item) =>
-        item.id === advisory.id ? { ...item, is_active: false } : item
+        item.id === advisory.id
+          ? { ...item, is_active: nextActive }
+          : item
       )
     );
-    setFlash({ type: "success", text: "Advisory deactivated." });
+    setFlash({
+      type: "success",
+      text: nextActive
+        ? "Advisory reactivated."
+        : "Advisory deactivated.",
+    });
   }
 
   async function deleteAdvisory() {
@@ -327,6 +347,7 @@ export default function OfficerEvacuationAdvisories() {
                   <th>Date</th>
                   <th>Title</th>
                   <th>Area</th>
+                  <th>Instructions / Destination</th>
                   <th>Level</th>
                   <th>Status</th>
                   <th>Issued By</th>
@@ -337,14 +358,14 @@ export default function OfficerEvacuationAdvisories() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7" className="officer-table-empty">
+                    <td colSpan="8" className="officer-table-empty">
                       Loading advisories...
                     </td>
                   </tr>
                 ) : filteredAdvisories.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="officer-table-empty">
-                      No advisories found.
+                    <td colSpan="8" className="officer-table-empty">
+                      No evacuation advisories match the selected filters.
                     </td>
                   </tr>
                 ) : (
@@ -353,11 +374,11 @@ export default function OfficerEvacuationAdvisories() {
                       <td>{formatDateTime(advisory.created_at)}</td>
                       <td>
                         <strong>{advisory.title}</strong>
-                        <small className="officer-table-subtext">
-                          {advisory.details}
-                        </small>
                       </td>
                       <td>{advisory.area}</td>
+                      <td className="officer-table-message">
+                        {advisory.details || "No instructions provided"}
+                      </td>
                       <td>
                         <span
                           className={`badge ${getLevelBadge(
@@ -385,20 +406,17 @@ export default function OfficerEvacuationAdvisories() {
                       </td>
                       <td>
                         <div className="officer-table-actions">
-                          {advisory.is_active && (
-                            <button
-                              className="btn-submit officer-icon-button"
-                              type="button"
-                              onClick={() => deactivateAdvisory(advisory)}
-                              disabled={
-                                actionLoading ===
-                                `deactivate-${advisory.id}`
-                              }
-                            >
-                              <CheckCircle2 size={15} />
-                              Deactivate
-                            </button>
-                          )}
+                          <button
+                            className="btn-submit officer-icon-button"
+                            type="button"
+                            onClick={() => toggleAdvisoryStatus(advisory)}
+                            disabled={
+                              actionLoading === `status-${advisory.id}`
+                            }
+                          >
+                            <CheckCircle2 size={15} />
+                            {advisory.is_active ? "Deactivate" : "Reactivate"}
+                          </button>
 
                           <button
                             className="btn-danger officer-icon-button"
@@ -449,6 +467,8 @@ export default function OfficerEvacuationAdvisories() {
                   }))
                 }
                 required
+                minLength="3"
+                maxLength="160"
               />
 
               <label className="form-label" htmlFor="advisory-area">
@@ -467,6 +487,8 @@ export default function OfficerEvacuationAdvisories() {
                 }
                 placeholder="e.g. Brgy. Bucana, Davao City"
                 required
+                minLength="3"
+                maxLength="200"
               />
 
               <label className="form-label" htmlFor="advisory-level">
@@ -491,7 +513,7 @@ export default function OfficerEvacuationAdvisories() {
               </select>
 
               <label className="form-label" htmlFor="advisory-details">
-                Details
+                Instructions and Evacuation Destination
               </label>
               <textarea
                 id="advisory-details"
@@ -505,6 +527,9 @@ export default function OfficerEvacuationAdvisories() {
                   }))
                 }
                 required
+                minLength="10"
+                maxLength="2000"
+                placeholder="Include evacuation instructions and the destination or evacuation center, if applicable."
               />
 
               <div className="modal-footer">

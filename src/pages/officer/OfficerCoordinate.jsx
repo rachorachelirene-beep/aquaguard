@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { Pencil, Plus, RefreshCw } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -54,17 +54,23 @@ export default function OfficerCoordinate() {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [responseModalMode, setResponseModalMode] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     title: "",
     body: "",
   });
+  const [responseForm, setResponseForm] = useState({
+    id: "",
+    station_id: "",
+    status: "ongoing",
+    notes: "",
+  });
 
   const loadCoordinateData = useCallback(async () => {
     try {
       setLoading(true);
-      setFlash(null);
 
       const [
         logsResult,
@@ -111,7 +117,7 @@ export default function OfficerCoordinate() {
       console.error("Coordinate loading error:", error);
       setFlash({
         type: "error",
-        text: error.message || "Unable to load coordination data.",
+        text: "Unable to load coordination activity. Check your connection and try again.",
       });
     } finally {
       setLoading(false);
@@ -157,6 +163,15 @@ export default function OfficerCoordinate() {
 
   async function handleAnnouncementSubmit(event) {
     event.preventDefault();
+
+    if (form.title.trim().length < 3 || form.body.trim().length < 10) {
+      setFlash({
+        type: "error",
+        text: "Enter an announcement title of at least 3 characters and a message of at least 10 characters.",
+      });
+      return;
+    }
+
     setSubmitting(true);
     setFlash(null);
 
@@ -177,8 +192,66 @@ export default function OfficerCoordinate() {
     }
 
     setForm({ title: "", body: "" });
-    setModalOpen(false);
+    setAnnouncementModalOpen(false);
     setFlash({ type: "success", text: "Announcement published." });
+    await loadCoordinateData();
+  }
+
+  function openResponseModal(log = null) {
+    setResponseForm({
+      id: log?.id ? String(log.id) : "",
+      station_id: log?.station_id ? String(log.station_id) : "",
+      status: log?.status ?? "ongoing",
+      notes: log?.notes ?? "",
+    });
+    setResponseModalMode(log ? "edit" : "create");
+  }
+
+  async function handleResponseSubmit(event) {
+    event.preventDefault();
+
+    const notes = responseForm.notes.trim();
+
+    if (notes.length < 5) {
+      setFlash({
+        type: "error",
+        text: "Describe the coordination or response action in at least 5 characters.",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    setFlash(null);
+
+    const changes = {
+      station_id: responseForm.station_id || null,
+      status: responseForm.status,
+      notes,
+    };
+    const result =
+      responseModalMode === "edit"
+        ? await supabase
+            .from("response_logs")
+            .update(changes)
+            .eq("id", responseForm.id)
+            .eq("responder_id", profile?.id)
+        : await supabase.from("response_logs").insert({
+            ...changes,
+            responder_id: profile?.id ?? null,
+          });
+
+    setSubmitting(false);
+
+    if (result.error) {
+      setFlash({
+        type: "error",
+        text: result.error.message || "Unable to save response activity.",
+      });
+      return;
+    }
+
+    setResponseModalMode(null);
+    setFlash({ type: "success", text: "Response activity saved." });
     await loadCoordinateData();
   }
 
@@ -196,43 +269,53 @@ export default function OfficerCoordinate() {
           <div className="section-card">
             <div className="section-title">
               <span>Responder Activity</span>
-
-              <button
-                className="btn-cancel officer-icon-button"
-                type="button"
-                onClick={loadCoordinateData}
-                disabled={loading}
-              >
-                <RefreshCw
-                  size={16}
-                  className={loading ? "officer-spin" : ""}
-                />
-                Refresh
-              </button>
+              <div className="officer-table-actions">
+                <button
+                  className="btn-cancel officer-icon-button"
+                  type="button"
+                  onClick={loadCoordinateData}
+                  disabled={loading}
+                >
+                  <RefreshCw
+                    size={16}
+                    className={loading ? "officer-spin" : ""}
+                  />
+                  Refresh
+                </button>
+                <button
+                  className="btn-submit officer-icon-button"
+                  type="button"
+                  onClick={() => openResponseModal()}
+                >
+                  <Plus size={16} />
+                  Record action
+                </button>
+              </div>
             </div>
 
             <div className="data-table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Responder</th>
+                    <th>Recorded By</th>
                     <th>Station</th>
                     <th>Status</th>
                     <th>Notes</th>
                     <th>Updated</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="5" className="officer-table-empty">
+                      <td colSpan="6" className="officer-table-empty">
                         Loading responder activity...
                       </td>
                     </tr>
                   ) : responseLogs.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="officer-table-empty">
+                      <td colSpan="6" className="officer-table-empty">
                         No response activity yet.
                       </td>
                     </tr>
@@ -247,8 +330,15 @@ export default function OfficerCoordinate() {
                         <tr key={log.id}>
                           <td>
                             <strong>
-                              {responder?.name ?? "Responder"}
+                              {responder?.name ?? "Response team member"}
                             </strong>
+                            <small className="officer-table-subtext">
+                              {responder?.role === "barangay_officer"
+                                ? "Barangay Officer"
+                                : responder?.role === "disaster_responder"
+                                  ? "Disaster Responder"
+                                  : "Response activity"}
+                            </small>
                           </td>
                           <td>
                             {station?.name ?? "General response"}
@@ -266,6 +356,23 @@ export default function OfficerCoordinate() {
                             {log.notes || "--"}
                           </td>
                           <td>{formatDateTime(log.updated_at)}</td>
+                          <td>
+                            {String(log.responder_id) ===
+                            String(profile?.id) ? (
+                              <button
+                                className="btn-cancel officer-icon-button"
+                                type="button"
+                                onClick={() => openResponseModal(log)}
+                              >
+                                <Pencil size={15} />
+                                Update
+                              </button>
+                            ) : (
+                              <span className="officer-table-subtext">
+                                Read only
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
@@ -282,7 +389,7 @@ export default function OfficerCoordinate() {
               <button
                 className="btn-submit officer-title-action"
                 type="button"
-                onClick={() => setModalOpen(true)}
+                onClick={() => setAnnouncementModalOpen(true)}
               >
                 <Plus size={16} />
                 New
@@ -309,7 +416,110 @@ export default function OfficerCoordinate() {
         </section>
       </main>
 
-      {modalOpen && (
+      {responseModalMode && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <div className="modal-header">
+              <span>
+                {responseModalMode === "edit"
+                  ? "Update Response Activity"
+                  : "Record Response Activity"}
+              </span>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={() => setResponseModalMode(null)}
+              >
+                x
+              </button>
+            </div>
+
+            <form onSubmit={handleResponseSubmit}>
+              <label className="form-label" htmlFor="response-station">
+                Monitoring Station
+              </label>
+              <select
+                id="response-station"
+                className="form-input"
+                value={responseForm.station_id}
+                onChange={(event) =>
+                  setResponseForm((current) => ({
+                    ...current,
+                    station_id: event.target.value,
+                  }))
+                }
+              >
+                <option value="">General barangay response</option>
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}
+                  </option>
+                ))}
+              </select>
+
+              <label className="form-label" htmlFor="response-status">
+                Response Status
+              </label>
+              <select
+                id="response-status"
+                className="form-input"
+                value={responseForm.status}
+                onChange={(event) =>
+                  setResponseForm((current) => ({
+                    ...current,
+                    status: event.target.value,
+                  }))
+                }
+              >
+                <option value="ongoing">On-going</option>
+                <option value="rescued">Rescued</option>
+                <option value="cleared">Cleared</option>
+              </select>
+
+              <label className="form-label" htmlFor="response-notes">
+                Action Notes
+              </label>
+              <textarea
+                id="response-notes"
+                className="form-input"
+                rows="5"
+                value={responseForm.notes}
+                onChange={(event) =>
+                  setResponseForm((current) => ({
+                    ...current,
+                    notes: event.target.value,
+                  }))
+                }
+                minLength="5"
+                maxLength="2000"
+                placeholder="Describe the coordination, assistance, or response action taken."
+                required
+                minLength="3"
+                maxLength="160"
+              />
+
+              <div className="modal-footer">
+                <button
+                  className="btn-cancel"
+                  type="button"
+                  onClick={() => setResponseModalMode(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-submit"
+                  type="submit"
+                  disabled={submitting}
+                >
+                  {submitting ? "Saving..." : "Save activity"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {announcementModalOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
             <div className="modal-header">
@@ -317,7 +527,7 @@ export default function OfficerCoordinate() {
               <button
                 className="modal-close"
                 type="button"
-                onClick={() => setModalOpen(false)}
+                onClick={() => setAnnouncementModalOpen(false)}
               >
                 x
               </button>
@@ -339,6 +549,8 @@ export default function OfficerCoordinate() {
                   }))
                 }
                 required
+                minLength="10"
+                maxLength="2000"
               />
 
               <label className="form-label" htmlFor="coordinate-body">
@@ -362,7 +574,7 @@ export default function OfficerCoordinate() {
                 <button
                   className="btn-cancel"
                   type="button"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setAnnouncementModalOpen(false)}
                 >
                   Cancel
                 </button>
