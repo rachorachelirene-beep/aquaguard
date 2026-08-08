@@ -586,6 +586,10 @@
   padding: 21px 22px;
 }
 
+.stations-form > .stations-message {
+  margin-bottom: 14px;
+}
+
 .stations-form-grid {
   display: grid;
   grid-template-columns:
@@ -628,6 +632,13 @@
 
 .stations-form-full {
   grid-column: 1 / -1;
+}
+
+.stations-form-help {
+  margin: -3px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .stations-threshold-section {

@@ -34,6 +34,8 @@ const emptyForm = {
   location: "",
   station_code: "",
   status: "online",
+  latitude: "",
+  longitude: "",
   normal_level: "1.00",
   warning_level: "2.00",
   critical_level: "2.50",
@@ -46,6 +48,43 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(number)
     ? number
     : fallback;
+}
+
+
+function parseOptionalCoordinate(
+  value,
+  label,
+  minimum,
+  maximum
+) {
+  const rawValue = String(
+    value ?? ""
+  ).trim();
+
+  if (!rawValue) {
+    return {
+      valid: true,
+      value: null,
+    };
+  }
+
+  const coordinate = Number(rawValue);
+
+  if (
+    !Number.isFinite(coordinate) ||
+    coordinate < minimum ||
+    coordinate > maximum
+  ) {
+    return {
+      valid: false,
+      message: `${label} must be between ${minimum} and ${maximum}.`,
+    };
+  }
+
+  return {
+    valid: true,
+    value: coordinate,
+  };
 }
 
 
@@ -221,6 +260,8 @@ export default function MonitoringStations() {
                 "location",
                 "station_code",
                 "status",
+                "latitude",
+                "longitude",
                 "normal_level",
                 "warning_level",
                 "critical_level",
@@ -299,7 +340,16 @@ export default function MonitoringStations() {
 
 
   useEffect(() => {
-    loadStations();
+    const initialLoad =
+      window.setTimeout(
+        loadStations,
+        0
+      );
+
+    return () =>
+      window.clearTimeout(
+        initialLoad
+      );
   }, [loadStations]);
 
 
@@ -457,6 +507,8 @@ export default function MonitoringStations() {
 
 
   function openCreateModal() {
+    setErrorMessage("");
+    setSuccessMessage("");
     setSelectedStation(null);
     setForm(emptyForm);
     setModalMode("create");
@@ -464,6 +516,8 @@ export default function MonitoringStations() {
 
 
   function openEditModal(station) {
+    setErrorMessage("");
+    setSuccessMessage("");
     setSelectedStation(station);
 
     setForm({
@@ -475,6 +529,14 @@ export default function MonitoringStations() {
       status: normalizeStatus(
         station.status
       ),
+      latitude:
+        station.latitude == null
+          ? ""
+          : String(station.latitude),
+      longitude:
+        station.longitude == null
+          ? ""
+          : String(station.longitude),
       normal_level: String(
         toNumber(
           station.normal_level,
@@ -507,6 +569,7 @@ export default function MonitoringStations() {
     setModalMode(null);
     setSelectedStation(null);
     setForm(emptyForm);
+    setErrorMessage("");
   }
 
 
@@ -543,6 +606,22 @@ export default function MonitoringStations() {
       -1
     );
 
+    const latitude =
+      parseOptionalCoordinate(
+        form.latitude,
+        "Latitude",
+        -90,
+        90
+      );
+
+    const longitude =
+      parseOptionalCoordinate(
+        form.longitude,
+        "Longitude",
+        -180,
+        180
+      );
+
     if (
       !name ||
       !location ||
@@ -552,6 +631,31 @@ export default function MonitoringStations() {
         valid: false,
         message:
           "Name, location and station code are required.",
+      };
+    }
+
+    if (!latitude.valid) {
+      return {
+        valid: false,
+        message: latitude.message,
+      };
+    }
+
+    if (!longitude.valid) {
+      return {
+        valid: false,
+        message: longitude.message,
+      };
+    }
+
+    if (
+      (latitude.value === null) !==
+      (longitude.value === null)
+    ) {
+      return {
+        valid: false,
+        message:
+          "Enter both latitude and longitude, or leave both blank.",
       };
     }
 
@@ -594,6 +698,8 @@ export default function MonitoringStations() {
         location,
         station_code: stationCode,
         status: form.status,
+        latitude: latitude.value,
+        longitude: longitude.value,
         normal_level: normalLevel,
         warning_level: warningLevel,
         critical_level: criticalLevel,
@@ -778,23 +884,24 @@ export default function MonitoringStations() {
       description="Manage flood monitoring locations and water-level thresholds"
     >
       <main className="stations-page">
-        {errorMessage && (
-          <div className="stations-message stations-message-error">
-            <TriangleAlert size={18} />
+        {errorMessage &&
+          !modalMode && (
+            <div className="stations-message stations-message-error">
+              <TriangleAlert size={18} />
 
-            <span>{errorMessage}</span>
+              <span>{errorMessage}</span>
 
-            <button
-              type="button"
-              onClick={() =>
-                setErrorMessage("")
-              }
-              aria-label="Close error"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={() =>
+                  setErrorMessage("")
+                }
+                aria-label="Close error"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
         {successMessage && (
           <div className="stations-message stations-message-success">
@@ -1280,6 +1387,19 @@ export default function MonitoringStations() {
                 className="stations-form"
                 onSubmit={handleSubmit}
               >
+                {errorMessage && (
+                  <div
+                    className="stations-message stations-message-error"
+                    role="alert"
+                  >
+                    <TriangleAlert size={18} />
+
+                    <span>
+                      {errorMessage}
+                    </span>
+                  </div>
+                )}
+
                 <div className="stations-form-grid">
                   <label className="stations-form-field stations-form-full">
                     <span>
@@ -1364,6 +1484,53 @@ export default function MonitoringStations() {
                       required
                     />
                   </label>
+
+                  <label className="stations-form-field">
+                    <span>
+                      Latitude (optional)
+                    </span>
+
+                    <input
+                      type="number"
+                      min="-90"
+                      max="90"
+                      step="any"
+                      value={form.latitude}
+                      onChange={(event) =>
+                        updateForm(
+                          "latitude",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Enter latitude"
+                    />
+                  </label>
+
+                  <label className="stations-form-field">
+                    <span>
+                      Longitude (optional)
+                    </span>
+
+                    <input
+                      type="number"
+                      min="-180"
+                      max="180"
+                      step="any"
+                      value={form.longitude}
+                      onChange={(event) =>
+                        updateForm(
+                          "longitude",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Enter longitude"
+                    />
+                  </label>
+
+                  <p className="stations-form-help stations-form-full">
+                    Coordinates enable automatic weather updates. Enter both
+                    values, or leave both blank until the station is configured.
+                  </p>
                 </div>
 
                 <div className="stations-threshold-section">

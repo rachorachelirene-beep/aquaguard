@@ -64,6 +64,17 @@ except ImportError:
         waterline_to_level,
     )
 
+try:
+    from .weather_service import (  # type: ignore[import-not-found]  # noqa: E402
+        get_weather_service_status,
+        start_weather_service,
+    )
+except ImportError:
+    from weather_service import (  # noqa: E402
+        get_weather_service_status,
+        start_weather_service,
+    )
+
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -178,6 +189,28 @@ SUPABASE_SECRET_KEY = (
         "SUPABASE_SERVICE_ROLE_KEY",
         "",
     ).strip()
+)
+
+WEATHER_ENABLED = env_bool("WEATHER_ENABLED", True)
+
+WEATHER_SYNC_INTERVAL_SECONDS = max(
+    60,
+    int(
+        os.getenv(
+            "WEATHER_SYNC_INTERVAL_SECONDS",
+            "600",
+        )
+    ),
+)
+
+WEATHER_REQUEST_TIMEOUT_SECONDS = max(
+    1.0,
+    float(
+        os.getenv(
+            "WEATHER_REQUEST_TIMEOUT_SECONDS",
+            "15",
+        )
+    ),
 )
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
@@ -322,6 +355,37 @@ def connect_supabase() -> None:
         supabase_error = str(error)
 
         print(f"Supabase connection error: {supabase_error}")
+
+
+def start_weather_sync() -> None:
+    if not WEATHER_ENABLED:
+        print("Open-Meteo weather sync is disabled.")
+        return
+
+    if supabase is None:
+        print(
+            "Open-Meteo weather sync is waiting for "
+            "a Supabase connection."
+        )
+        return
+
+    try:
+        start_weather_service(
+            supabase,
+            interval_seconds=(
+                WEATHER_SYNC_INTERVAL_SECONDS
+            ),
+            request_timeout_seconds=(
+                WEATHER_REQUEST_TIMEOUT_SECONDS
+            ),
+        )
+        print(
+            "Open-Meteo weather sync started "
+            f"(every {WEATHER_SYNC_INTERVAL_SECONDS}s)."
+        )
+    except Exception as error:
+        # Weather initialization must never stop camera capture or YOLO.
+        print(f"Open-Meteo weather sync error: {error}")
 
 
 # =========================================================
@@ -1625,6 +1689,7 @@ def index():
             "snapshot_endpoint": "/snapshot",
             "health_endpoint": "/health",
             "detection_endpoint": "/latest_detection",
+            "weather_status_endpoint": "/weather_status",
         }
     )
 
@@ -1664,6 +1729,31 @@ def health():
             "supabase_error": supabase_error,
             "alert_cooldown_seconds": (
                 ALERT_COOLDOWN_SECONDS
+            ),
+        }
+    )
+
+
+@app.get("/weather_status")
+def weather_status():
+    service_status = get_weather_service_status()
+
+    if (
+        WEATHER_ENABLED
+        and supabase is None
+        and not service_status.get("last_error")
+    ):
+        service_status["last_error"] = (
+            "Supabase connection is unavailable."
+        )
+
+    return jsonify(
+        {
+            "enabled": WEATHER_ENABLED,
+            "provider": "Open-Meteo",
+            **service_status,
+            "sync_interval_seconds": (
+                WEATHER_SYNC_INTERVAL_SECONDS
             ),
         }
     )
@@ -1800,6 +1890,7 @@ def snapshot():
 if __name__ == "__main__":
     load_yolo_model()
     connect_supabase()
+    start_weather_sync()
     start_capture_thread()
 
     print("=" * 62)
@@ -1818,6 +1909,10 @@ if __name__ == "__main__":
     print(
         "Detection: "
         f"http://localhost:{FLASK_PORT}/latest_detection"
+    )
+    print(
+        "Weather: "
+        f"http://localhost:{FLASK_PORT}/weather_status"
     )
     print(
         f"Alert cooldown: {ALERT_COOLDOWN_SECONDS}s"

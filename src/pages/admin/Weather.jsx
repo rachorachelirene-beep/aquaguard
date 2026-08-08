@@ -54,6 +54,25 @@ function clamp(value, minimum, maximum) {
 }
 
 
+function isCoordinateInRange(
+  value,
+  minimum,
+  maximum
+) {
+  if (value == null || value === "") {
+    return false;
+  }
+
+  const coordinate = Number(value);
+
+  return (
+    Number.isFinite(coordinate) &&
+    coordinate >= minimum &&
+    coordinate <= maximum
+  );
+}
+
+
 function formatDateTime(value) {
   if (!value) {
     return "--";
@@ -189,6 +208,18 @@ function getRiskDetails(riskValue) {
     risk * 100
   );
 
+  if (percentage === 0) {
+    return {
+      percentage,
+      label: "Not assessed",
+      description:
+        "A combined weather and YOLO flood-risk model has not been configured.",
+      className:
+        "weather-risk-low",
+      isNeutral: true,
+    };
+  }
+
   if (percentage >= 75) {
     return {
       percentage,
@@ -268,6 +299,19 @@ export default function Weather() {
   );
 
 
+  const stationHasCoordinates =
+    isCoordinateInRange(
+      selectedStation?.latitude,
+      -90,
+      90
+    ) &&
+    isCoordinateInRange(
+      selectedStation?.longitude,
+      -180,
+      180
+    );
+
+
   const latestWeather =
     weatherRows[0] ?? null;
 
@@ -285,6 +329,8 @@ export default function Weather() {
                 "location",
                 "station_code",
                 "status",
+                "latitude",
+                "longitude",
               ].join(",")
             )
             .order("name", {
@@ -413,7 +459,16 @@ export default function Weather() {
 
 
   useEffect(() => {
-    loadStations();
+    const initialLoad =
+      window.setTimeout(
+        loadStations,
+        0
+      );
+
+    return () =>
+      window.clearTimeout(
+        initialLoad
+      );
   }, [loadStations]);
 
 
@@ -422,7 +477,11 @@ export default function Weather() {
       return undefined;
     }
 
-    loadWeather();
+    const initialLoad =
+      window.setTimeout(
+        loadWeather,
+        0
+      );
 
     const interval =
       window.setInterval(
@@ -430,8 +489,13 @@ export default function Weather() {
         60000
       );
 
-    return () =>
+    return () => {
+      window.clearTimeout(
+        initialLoad
+      );
+
       window.clearInterval(interval);
+    };
   }, [
     selectedStationId,
     loadWeather,
@@ -521,9 +585,8 @@ export default function Weather() {
     if (weatherRows.length === 0) {
       return {
         highestTemperature: 0,
-        totalRainfall: 0,
         highestWind: 0,
-        highestRisk: 0,
+        highestRisk: null,
       };
     }
 
@@ -531,14 +594,6 @@ export default function Weather() {
       weatherRows.map((row) =>
         toNumber(
           row.temperature
-        )
-      );
-
-    const rainValues =
-      weatherRows.map((row) =>
-        toNumber(
-          row.rain_1h ??
-            row.precipitation
         )
       );
 
@@ -560,17 +615,15 @@ export default function Weather() {
         )
       );
 
+    const assessedRiskValues =
+      riskValues.filter(
+        (value) => value > 0
+      );
+
     return {
       highestTemperature:
         Math.max(
           ...temperatures
-        ),
-
-      totalRainfall:
-        rainValues.reduce(
-          (total, value) =>
-            total + value,
-          0
         ),
 
       highestWind:
@@ -579,11 +632,13 @@ export default function Weather() {
         ),
 
       highestRisk:
-        Math.round(
-          Math.max(
-            ...riskValues
-          ) * 100
-        ),
+        assessedRiskValues.length > 0
+          ? Math.round(
+              Math.max(
+                ...assessedRiskValues
+              ) * 100
+            )
+          : null,
     };
   }, [weatherRows]);
 
@@ -652,6 +707,22 @@ export default function Weather() {
               {selectedStation?.location ??
                 "Location unavailable"}
             </span>
+
+            {selectedStation &&
+              !stationHasCoordinates && (
+                <span className="weather-coordinate-note">
+                  Add station coordinates to enable automatic weather updates.
+                </span>
+              )}
+
+            <a
+              className="weather-source-link"
+              href="https://open-meteo.com/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Weather data by Open-Meteo.com
+            </a>
           </div>
 
           <div className="weather-toolbar-actions">
@@ -850,7 +921,9 @@ export default function Weather() {
             </span>
 
             <h3>
-              {riskDetails.label} Risk
+              {riskDetails.isNeutral
+                ? riskDetails.label
+                : `${riskDetails.label} Risk`}
             </h3>
 
             <p>
@@ -862,14 +935,15 @@ export default function Weather() {
 
           <div className="weather-risk-percentage">
             <strong>
-              {
-                riskDetails.percentage
-              }
-              %
+              {riskDetails.isNeutral
+                ? "--"
+                : `${riskDetails.percentage}%`}
             </strong>
 
             <span>
-              Current risk score
+              {riskDetails.isNeutral
+                ? "Combined model pending"
+                : "Current risk score"}
             </span>
           </div>
         </section>
@@ -888,16 +962,17 @@ export default function Weather() {
 
             <div className="weather-chart-summary">
               <span>
-                Total rainfall:{" "}
-                {summary.totalRainfall.toFixed(
-                  1
-                )}{" "}
-                mm
+                Latest 6H rainfall:{" "}
+                {latestWeather
+                  ? `${rainSixHours.toFixed(1)} mm`
+                  : "--"}
               </span>
 
               <span>
                 Highest risk:{" "}
-                {summary.highestRisk}%
+                {summary.highestRisk == null
+                  ? "--"
+                  : `${summary.highestRisk}%`}
               </span>
             </div>
           </header>
@@ -1176,10 +1251,9 @@ export default function Weather() {
                             <span
                               className={`weather-risk-badge ${rowRisk.className}`}
                             >
-                              {
-                                rowRisk.percentage
-                              }
-                              %
+                              {rowRisk.isNeutral
+                                ? "Not assessed"
+                                : `${rowRisk.percentage}%`}
                             </span>
                           </td>
                         </tr>
