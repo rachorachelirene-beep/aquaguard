@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Bell,
+  FileText,
+  History,
+  Megaphone,
+  RadioTower,
+  ShieldAlert,
+} from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -12,6 +20,30 @@ function toNumber(value, fallback = 0) {
 
 function formatLevel(value) {
   return `${toNumber(value).toFixed(2)} m`;
+}
+
+function formatTrend(value) {
+  if (value == null) {
+    return "Not enough readings";
+  }
+
+  if (Math.abs(value) < 0.005) {
+    return "Stable since last reading";
+  }
+
+  return `${value > 0 ? "Rising" : "Falling"} ${Math.abs(value).toFixed(
+    2
+  )} m`;
+}
+
+function formatPercent(value) {
+  const number = toNumber(value, null);
+
+  if (number == null) {
+    return "--";
+  }
+
+  return `${Math.round(number <= 1 ? number * 100 : number)}%`;
 }
 
 function formatTime(value) {
@@ -112,6 +144,20 @@ function buildLatestReadings(stations, readings) {
     .filter((reading) => reading.id);
 }
 
+function QuickAction({ to, icon: Icon, title, description }) {
+  return (
+    <Link className="officer-quick-card" to={to}>
+      <span className="officer-quick-icon">
+        <Icon size={21} />
+      </span>
+      <span>
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+    </Link>
+  );
+}
+
 function OfficerDashboardContent() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -120,7 +166,10 @@ function OfficerDashboardContent() {
   const [stations, setStations] = useState([]);
   const [latestReadings, setLatestReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [activeAlertCount, setActiveAlertCount] = useState(0);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [history, setHistory] = useState([]);
+  const [latestDetection, setLatestDetection] = useState(null);
   const [weather, setWeather] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
   const [advisories, setAdvisories] = useState([]);
@@ -144,9 +193,11 @@ function OfficerDashboardContent() {
       stationsResult,
       readingsResult,
       alertsResult,
+      unreadAlertsResult,
       weatherResult,
       announcementsResult,
       advisoriesResult,
+      detectionsResult,
     ] = await Promise.all([
       supabase
         .from("stations")
@@ -162,10 +213,16 @@ function OfficerDashboardContent() {
       supabase
         .from("alerts")
         .select(
-          "id, station_id, type, title, message, is_read, is_resolved, created_at"
+          "id, station_id, type, title, message, is_read, is_resolved, created_at",
+          { count: "exact" }
         )
+        .eq("is_resolved", false)
         .order("created_at", { ascending: false })
         .limit(8),
+      supabase
+        .from("alerts")
+        .select("id", { count: "exact", head: true })
+        .eq("is_read", false),
       supabase
         .from("weather_readings")
         .select(
@@ -184,15 +241,24 @@ function OfficerDashboardContent() {
         .select("id, title, area, level, details, is_active, created_at")
         .order("created_at", { ascending: false })
         .limit(5),
+      supabase
+        .from("yolo_detections")
+        .select(
+          "id, station_id, level_m, confidence, water_coverage, flood_risk, detected_at"
+        )
+        .order("detected_at", { ascending: false })
+        .limit(50),
     ]);
 
     const firstError = [
       stationsResult.error,
       readingsResult.error,
       alertsResult.error,
+      unreadAlertsResult.error,
       weatherResult.error,
       announcementsResult.error,
       advisoriesResult.error,
+      detectionsResult.error,
     ].find(Boolean);
 
     if (firstError) {
@@ -207,6 +273,10 @@ function OfficerDashboardContent() {
     );
     const primaryStation =
       nextLatestReadings[0]?.station ?? nextStations[0];
+    const nextDetection = (detectionsResult.data ?? []).find(
+      (detection) =>
+        String(detection.station_id) === String(primaryStation?.id)
+    );
     let nextHistory = [];
 
     if (primaryStation?.id) {
@@ -227,9 +297,12 @@ function OfficerDashboardContent() {
     setStations(nextStations);
     setLatestReadings(nextLatestReadings);
     setAlerts(alertsResult.data ?? []);
+    setActiveAlertCount(alertsResult.count ?? 0);
+    setUnreadAlerts(unreadAlertsResult.count ?? 0);
     setWeather(weatherResult.data ?? null);
     setAnnouncements(announcementsResult.data ?? []);
     setAdvisories(advisoriesResult.data ?? []);
+    setLatestDetection(nextDetection ?? null);
     setHistory(nextHistory);
   }, []);
 
@@ -248,7 +321,7 @@ function OfficerDashboardContent() {
 
         if (active) {
           setLoadError(
-            error.message || "Unable to load officer dashboard data."
+            "We could not load the latest monitoring data. Please try again."
           );
         }
       } finally {
@@ -276,18 +349,47 @@ function OfficerDashboardContent() {
     return () => window.clearTimeout(timer);
   }, [flash]);
 
+  async function handleRetry() {
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      await loadDashboard();
+    } catch (error) {
+      console.error("Officer dashboard retry error:", error);
+      setLoadError(
+        "We could not load the latest monitoring data. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const primary = latestReadings[0] ?? null;
   const primaryStation = primary?.station ?? stations[0] ?? null;
-  const currentLevel = toNumber(primary?.level_m);
+  const currentLevel = toNumber(
+    latestDetection?.level_m,
+    toNumber(primary?.level_m, null)
+  );
+  const hasCurrentReading = currentLevel != null;
   const criticalLevel = toNumber(primaryStation?.critical_level, 2.5);
   const warningLevel = toNumber(primaryStation?.warning_level, 2);
-  const status = getStatus(currentLevel, warningLevel, criticalLevel);
-  const activeAlerts = alerts.filter(
-    (alert) =>
-      !alert.is_resolved &&
-      ["critical", "warning"].includes(alert.type)
-  ).length;
+  const status = getStatus(
+    hasCurrentReading ? currentLevel : 0,
+    warningLevel,
+    criticalLevel
+  );
+  const activeAlerts = activeAlertCount;
+  const latestActiveAlert = alerts[0] ?? null;
   const stationName = primaryStation?.name ?? "No Station";
+  const stationLocation = primaryStation?.location ?? "Location unavailable";
+  const latestDetectionAt =
+    latestDetection?.detected_at ?? primary?.recorded_at ?? null;
+  const recentTrend =
+    history.length >= 2
+      ? toNumber(history.at(-1)?.level_m) -
+        toNumber(history.at(-2)?.level_m)
+      : null;
   const historyMax = Math.max(criticalLevel, 1);
 
   const stationSummary = stations.map((station) => {
@@ -382,7 +484,14 @@ function OfficerDashboardContent() {
       {!loading && loadError && (
         <div className="page-content">
           <div className="section-card dashboard-empty error">
-            {loadError}
+            <strong>{loadError}</strong>
+            <button
+              className="btn-submit"
+              type="button"
+              onClick={handleRetry}
+            >
+              Try again
+            </button>
           </div>
         </div>
       )}
@@ -396,9 +505,11 @@ function OfficerDashboardContent() {
                 <span className="stat-icon blue">~</span>
               </div>
               <div className="stat-value blue">
-                {primary ? formatLevel(currentLevel) : "No data"}
+                {hasCurrentReading ? formatLevel(currentLevel) : "No data"}
               </div>
-              <div className="stat-sub">STATION: {stationName}</div>
+              <div className="stat-sub">
+                {stationName} · {stationLocation}
+              </div>
             </div>
 
             <div className="stat-card warning-card">
@@ -407,36 +518,77 @@ function OfficerDashboardContent() {
                 <span className={`stat-icon ${status.className}`}>!</span>
               </div>
               <div className={`stat-value ${status.className} big`}>
-                {primary ? status.label : "NO DATA"}
+                {hasCurrentReading ? status.label : "NO DATA"}
               </div>
               <div className="stat-sub">
-                {primary ? status.sub : "WAITING FOR READING"}
+                {hasCurrentReading ? status.sub : "WAITING FOR READING"}
               </div>
             </div>
 
             <div className="stat-card">
               <div className="stat-header">
-                <span className="stat-label">ACTIVE ALERTS</span>
+                <span className="stat-label">UNREAD ALERTS</span>
                 <span className="stat-icon orange">!</span>
               </div>
-              <div className="stat-value orange">{activeAlerts}</div>
-              <div className="stat-sub">UNRESOLVED WARNING/CRITICAL</div>
+              <div className="stat-value orange">{unreadAlerts}</div>
+              <div className="stat-sub">
+                {latestActiveAlert
+                  ? latestActiveAlert.title
+                  : "NO ACTIVE ALERTS"}
+              </div>
             </div>
 
             <div className="stat-card weather-card">
               <div className="stat-header">
-                <span className="stat-label">WEATHER</span>
+                <span className="stat-label">LATEST DETECTION</span>
                 <span className="stat-icon blue">~</span>
               </div>
               <div className="stat-value compact">
-                {weather?.condition_text ?? "No data"}
+                {formatDateTime(latestDetectionAt)}
               </div>
               <div className="stat-sub">
-                {weather?.temperature ?? "--"}C | Rain:{" "}
-                {weather ? toNumber(weather.precipitation).toFixed(1) : "--"}
-                mm
+                {formatTrend(recentTrend)}
               </div>
             </div>
+          </section>
+
+          <section className="officer-monitoring-summary">
+            <article className="officer-summary-card">
+              <span>Monitoring station</span>
+              <strong>{stationName}</strong>
+              <small>
+                {stationLocation} · {primaryStation?.station_code ?? "No code"}
+              </small>
+              <small>
+                Weather: {weather?.condition_text ?? "No weather data"}
+              </small>
+            </article>
+
+            <article className="officer-summary-card officer-summary-alert">
+              <span>Latest active alert</span>
+              <strong>
+                {latestActiveAlert?.title ?? "No active alerts"}
+              </strong>
+              <small>
+                {latestActiveAlert?.message ??
+                  "The barangay has no unresolved alerts."}
+              </small>
+              {latestActiveAlert && (
+                <small>{formatDateTime(latestActiveAlert.created_at)}</small>
+              )}
+            </article>
+
+            <article className="officer-summary-card">
+              <span>Recent water-level trend</span>
+              <strong>{formatTrend(recentTrend)}</strong>
+              <small>
+                AI confidence {formatPercent(latestDetection?.confidence)} ·
+                Coverage {formatPercent(latestDetection?.water_coverage)}
+              </small>
+              <small>
+                Flood risk {formatPercent(latestDetection?.flood_risk)}
+              </small>
+            </article>
           </section>
 
           <section className="mid-row">
@@ -452,7 +604,9 @@ function OfficerDashboardContent() {
               </div>
               <div className="bar-chart">
                 {history.length === 0 && (
-                  <div className="dashboard-empty">No history.</div>
+                  <div className="dashboard-empty">
+                    No water-level readings available
+                  </div>
                 )}
 
                 {history.map((reading) => {
@@ -498,7 +652,7 @@ function OfficerDashboardContent() {
               </div>
               <div className="alert-grid">
                 {alerts.length === 0 && (
-                  <div className="dashboard-empty">No alerts.</div>
+                  <div className="dashboard-empty">No active alerts</div>
                 )}
 
                 {alerts.map((alert) => (
@@ -534,7 +688,9 @@ function OfficerDashboardContent() {
               </div>
 
               {announcements.length === 0 && (
-                <div className="dashboard-empty">No announcements yet.</div>
+                <div className="dashboard-empty">
+                  No announcements available
+                </div>
               )}
 
               {announcements.slice(0, 4).map((announcement) => (
@@ -560,7 +716,7 @@ function OfficerDashboardContent() {
 
               {advisories.length === 0 && (
                 <div className="dashboard-empty">
-                  No advisories issued.
+                  No evacuation advisories available
                 </div>
               )}
 
@@ -610,35 +766,50 @@ function OfficerDashboardContent() {
               </div>
             </div>
 
-            <div className="action-btns">
-              <button
-                className="action-btn teal-btn"
-                type="button"
-                onClick={() => setModal("announcement")}
-              >
-                <span>+</span>
-                ISSUE PUBLIC
-                <br />
-                ANNOUNCEMENT
-              </button>
+          </section>
 
-              <button
-                className="action-btn dark-btn"
-                type="button"
-                onClick={() => setModal("advisory")}
-              >
-                <span>!</span>
-                ISSUE EVACUATION
-                <br />
-                ADVISORY
-              </button>
-
-              <Link className="action-btn dark-btn" to="/officer/reports">
-                <span>~</span>
-                VIEW INCIDENT
-                <br />
-                REPORTS
-              </Link>
+          <section className="section-card officer-quick-section">
+            <div className="section-title">
+              <span>Quick Actions</span>
+              <small>Officer tools and monitoring pages</small>
+            </div>
+            <div className="officer-quick-grid">
+              <QuickAction
+                to="/officer/live-monitoring"
+                icon={RadioTower}
+                title="Live Monitoring"
+                description="Open the CCTV and AI detection feed"
+              />
+              <QuickAction
+                to="/officer/alerts"
+                icon={Bell}
+                title="Alerts"
+                description="Review and acknowledge flood alerts"
+              />
+              <QuickAction
+                to="/officer/water-level-history"
+                icon={History}
+                title="Water Level History"
+                description="Inspect recent station readings"
+              />
+              <QuickAction
+                to="/officer/reports"
+                icon={FileText}
+                title="Reports"
+                description="Review barangay incident reports"
+              />
+              <QuickAction
+                to="/officer/announcements"
+                icon={Megaphone}
+                title="Announcements"
+                description="Publish community information"
+              />
+              <QuickAction
+                to="/officer/evacuation-advisories"
+                icon={ShieldAlert}
+                title="Evacuation Advisories"
+                description="Manage evacuation guidance"
+              />
             </div>
           </section>
         </>

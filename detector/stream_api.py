@@ -207,6 +207,7 @@ state_lock = threading.Lock()
 station_lock = threading.Lock()
 
 latest_jpeg: bytes | None = None
+latest_camera_frame: np.ndarray | None = None
 latest_frame_at: str | None = None
 latest_water_mask: np.ndarray | None = None
 
@@ -1384,6 +1385,7 @@ def write_detection_to_supabase(
 
 def camera_capture_loop() -> None:
     global latest_jpeg
+    global latest_camera_frame
     global latest_frame_at
     global latest_water_mask
     global latest_detection
@@ -1431,6 +1433,9 @@ def camera_capture_loop() -> None:
 
                 frame = normalize_camera_frame(frame)
                 frame = resize_frame_for_processing(frame)
+
+                with frame_lock:
+                    latest_camera_frame = frame.copy()
 
                 latest_frame_at = datetime.now(
                     timezone.utc
@@ -1617,6 +1622,7 @@ def index():
             "active_camera_source": active_camera_source,
             "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "video_endpoint": "/video_feed",
+            "snapshot_endpoint": "/snapshot",
             "health_endpoint": "/health",
             "detection_endpoint": "/latest_detection",
         }
@@ -1721,6 +1727,68 @@ def video_feed():
             ),
             "Pragma": "no-cache",
             "Expires": "0",
+        },
+    )
+
+
+@app.get("/snapshot")
+def snapshot():
+    requested_station_id = request.args.get(
+        "station_id"
+    )
+
+    set_active_station_id(
+        requested_station_id
+    )
+
+    start_capture_thread()
+
+    with frame_lock:
+        frame = (
+            latest_camera_frame.copy()
+            if latest_camera_frame is not None
+            else None
+        )
+
+    if frame is None:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Camera snapshot is not ready."
+                    )
+                }
+            ),
+            503,
+        )
+
+    encoded, jpeg_buffer = cv2.imencode(
+        ".jpg",
+        frame,
+        [
+            int(cv2.IMWRITE_JPEG_QUALITY),
+            JPEG_QUALITY,
+        ],
+    )
+
+    if not encoded:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Unable to encode camera snapshot."
+                    )
+                }
+            ),
+            500,
+        )
+
+    return Response(
+        jpeg_buffer.tobytes(),
+        mimetype="image/jpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
         },
     )
 

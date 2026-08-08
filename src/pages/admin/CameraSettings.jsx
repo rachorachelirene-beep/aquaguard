@@ -1850,6 +1850,10 @@ export default function CameraSettings() {
                 updateBooleanSetting
               }
               toBoolean={toBoolean}
+              apiBaseUrl={apiBaseUrl}
+              selectedStationId={
+                selectedStationId
+              }
             />
 
             <section className="camera-env-card">

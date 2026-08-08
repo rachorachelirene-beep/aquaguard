@@ -78,10 +78,46 @@ def parse_gauge_points() -> GaugePoints | None:
                 float(value.strip()) for value in raw_point.split(",", 1)
             ]
             parsed.append((x_value, y_value))
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
-    return parsed[0], parsed[1], parsed[2], parsed[3]
+    points = parsed[0], parsed[1], parsed[2], parsed[3]
+
+    return points if is_valid_gauge_points(points) else None
+
+
+def is_valid_gauge_points(points: GaugePoints) -> bool:
+    if any(
+        not math.isfinite(coordinate) or coordinate < 0
+        for point in points
+        for coordinate in point
+    ):
+        return False
+
+    if len(set(points)) != 4:
+        return False
+
+    largest_coordinate = max(
+        coordinate for point in points for coordinate in point
+    )
+    epsilon = 0.0001 if largest_coordinate <= 1.5 else 4.0
+    cross_products: list[float] = []
+
+    for index in range(4):
+        current = points[index]
+        following = points[(index + 1) % 4]
+        after_following = points[(index + 2) % 4]
+        cross_products.append(
+            (following[0] - current[0])
+            * (after_following[1] - following[1])
+            - (following[1] - current[1])
+            * (after_following[0] - following[0])
+        )
+
+    return (
+        all(value > epsilon for value in cross_products)
+        or all(value < -epsilon for value in cross_products)
+    )
 
 
 def resolve_gauge_points(
