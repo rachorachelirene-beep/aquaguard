@@ -217,7 +217,7 @@ function StreamPlaceholder({ streamState }) {
   );
 }
 
-function LiveMonitoringContent() {
+function LiveMonitoringContent({ routePrefix }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedStationId = searchParams.get("station_id");
   const feedRef = useRef(null);
@@ -232,6 +232,8 @@ function LiveMonitoringContent() {
   const [weather, setWeather] = useState(null);
   const [yolo, setYolo] = useState(null);
   const [detector, setDetector] = useState(null);
+  const [detectorHealth, setDetectorHealth] = useState(null);
+  const [liveDetection, setLiveDetection] = useState(null);
   const [cameraSources, setCameraSources] = useState([]);
   const [streamStatus, setStreamStatus] = useState({
     key: "",
@@ -440,6 +442,63 @@ function LiveMonitoringContent() {
     };
   }, [loadMonitoring]);
 
+  const selectedStation = pickSelectedStation(stations, requestedStationId);
+  const selectedStationId = selectedStation?.id
+    ? String(selectedStation.id)
+    : "";
+
+  useEffect(() => {
+    let active = true;
+    const cleanBase = cameraApiBaseUrl.replace(/\/+$/, "");
+
+    async function loadDetectorState() {
+      const params = new URLSearchParams();
+
+      if (selectedStationId) {
+        params.set("station_id", selectedStationId);
+      }
+
+      const query = params.toString();
+      const suffix = query ? `?${query}` : "";
+
+      try {
+        const [healthResponse, detectionResponse] = await Promise.all([
+          fetch(`${cleanBase}/health${suffix}`),
+          fetch(`${cleanBase}/latest_detection${suffix}`),
+        ]);
+
+        if (!healthResponse.ok || !detectionResponse.ok) {
+          throw new Error("Detector API returned an error response.");
+        }
+
+        const [healthData, detectionData] = await Promise.all([
+          healthResponse.json(),
+          detectionResponse.json(),
+        ]);
+
+        if (active) {
+          setDetectorHealth(healthData);
+          setLiveDetection(detectionData);
+        }
+      } catch (error) {
+        if (active) {
+          setDetectorHealth(null);
+          setLiveDetection(null);
+        }
+
+        console.warn("Detector API status unavailable:", error);
+      }
+    }
+
+    loadDetectorState();
+    const interval = window.setInterval(loadDetectorState, 7000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [cameraApiBaseUrl, selectedStationId]);
+
   useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(new Date());
@@ -448,20 +507,19 @@ function LiveMonitoringContent() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const selectedStation = pickSelectedStation(stations, requestedStationId);
-  const selectedStationId = selectedStation?.id
-    ? String(selectedStation.id)
-    : "";
   const selectedReading =
     stationReadings.find(
       (row) => String(row.station.id) === selectedStationId
     )?.reading ?? historyRows[0] ?? null;
+  const currentDetection = liveDetection?.detected_at
+    ? liveDetection
+    : detector;
 
   const criticalLevel = toNumber(selectedStation?.critical_level, 2.5);
   const warningLevel = toNumber(selectedStation?.warning_level, 2);
   const normalLevel = toNumber(selectedStation?.normal_level, 1);
   const detectedLevel = toNumber(
-    detector?.level_m,
+    currentDetection?.level_m,
     toNumber(yolo?.level_m, toNumber(selectedReading?.level_m))
   );
   const status = getWaterStatus(
@@ -481,7 +539,7 @@ function LiveMonitoringContent() {
   const activeCamera =
     cameraSources.find((source) => source.is_active) ?? cameraSources[0] ?? null;
   const detectorAge = minutesAgo(
-    detector?.detected_at ?? yolo?.detected_at,
+    currentDetection?.detected_at ?? yolo?.detected_at,
     now
   );
   const detectorFresh = detectorAge != null && detectorAge <= 5;
@@ -560,7 +618,7 @@ function LiveMonitoringContent() {
       message: `Live monitoring reports ${formatLevel(
         detectedLevel
       )}. Latest AI confidence: ${formatPercent(
-        detector?.confidence ?? yolo?.confidence
+        currentDetection?.confidence ?? yolo?.confidence
       )}.`,
     });
 
@@ -722,16 +780,28 @@ function LiveMonitoringContent() {
                         </span>
                         <span>
                           Coverage{" "}
-                          <strong>{formatPercent(yolo?.water_coverage)}</strong>
+                          <strong>
+                            {formatPercent(
+                              currentDetection?.water_coverage ??
+                                yolo?.water_coverage
+                            )}
+                          </strong>
                         </span>
                         <span>
                           AI Conf{" "}
                           <strong>
-                            {formatPercent(detector?.confidence ?? yolo?.confidence)}
+                            {formatPercent(
+                              currentDetection?.confidence ?? yolo?.confidence
+                            )}
                           </strong>
                         </span>
                         <span>
-                          Risk <strong>{formatPercent(yolo?.flood_risk)}</strong>
+                          Risk{" "}
+                          <strong>
+                            {formatPercent(
+                              currentDetection?.flood_risk ?? yolo?.flood_risk
+                            )}
+                          </strong>
                         </span>
                       </div>
 
@@ -855,7 +925,8 @@ function LiveMonitoringContent() {
                                 <td>
                                   {index === 0
                                     ? formatPercent(
-                                        detector?.confidence ?? yolo?.confidence
+                                        currentDetection?.confidence ??
+                                          yolo?.confidence
                                       )
                                     : "--"}
                                 </td>
@@ -920,7 +991,11 @@ function LiveMonitoringContent() {
                     <div className="lm-health-grid">
                       <div className="lm-health-item">
                         <span>Stream</span>
-                        <strong>{streamState}</strong>
+                        <strong>
+                          {detectorHealth?.camera_connected === false
+                            ? "offline"
+                            : streamState}
+                        </strong>
                       </div>
                       <div className="lm-health-item">
                         <span>Detector</span>
@@ -930,6 +1005,12 @@ function LiveMonitoringContent() {
                         <span>Last AI hit</span>
                         <strong>
                           {detectorAge == null ? "--" : `${detectorAge}m ago`}
+                        </strong>
+                      </div>
+                      <div className="lm-health-item">
+                        <span>Latest detection</span>
+                        <strong>
+                          {formatDateTime(currentDetection?.detected_at)}
                         </strong>
                       </div>
                       <div className="lm-health-item">
@@ -987,7 +1068,9 @@ function LiveMonitoringContent() {
                         className="lm-risk-fill"
                         style={{
                           width: `${normalizePercent(
-                            yolo?.flood_risk ?? weather?.flood_risk
+                            currentDetection?.flood_risk ??
+                              yolo?.flood_risk ??
+                              weather?.flood_risk
                           ) ?? 0}%`,
                         }}
                       />
@@ -995,7 +1078,11 @@ function LiveMonitoringContent() {
                     <div className="lm-risk-meta">
                       <span>Flood risk</span>
                       <strong>
-                        {formatPercent(yolo?.flood_risk ?? weather?.flood_risk)}
+                        {formatPercent(
+                          currentDetection?.flood_risk ??
+                            yolo?.flood_risk ??
+                            weather?.flood_risk
+                        )}
                       </strong>
                     </div>
                   </div>
@@ -1017,14 +1104,14 @@ function LiveMonitoringContent() {
                       </button>
                       <Link
                         className="lm-action-btn lm-action-report"
-                        to="/admin/reports"
+                        to={`${routePrefix}/reports`}
                       >
                         <FileText size={16} />
                         Generate Report
                       </Link>
                       <Link
                         className="lm-action-btn lm-action-history"
-                        to={`/admin/water-level-history?station_id=${selectedStationId}`}
+                        to={`${routePrefix}/water-level-history?station_id=${selectedStationId}`}
                       >
                         <History size={16} />
                         View History
@@ -1061,13 +1148,13 @@ function LiveMonitoringContent() {
   );
 }
 
-export default function LiveMonitoring() {
+export default function LiveMonitoring({ routePrefix = "/admin" }) {
   return (
     <DashboardLayout
       title="Live Monitoring"
       description="Real-time webcam feed with AI waterline detection"
     >
-      <LiveMonitoringContent />
+      <LiveMonitoringContent routePrefix={routePrefix} />
     </DashboardLayout>
   );
 }

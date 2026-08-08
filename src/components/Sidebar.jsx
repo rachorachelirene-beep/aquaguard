@@ -48,6 +48,11 @@ const roleMenus = {
   barangay_officer: [
     { label: "Dashboard", to: "/officer/dashboard", icon: LayoutDashboard },
     {
+      label: "Live Monitoring",
+      to: "/officer/live-monitoring",
+      icon: RadioTower,
+    },
+    {
       label: "Water Level History",
       to: "/officer/water-level-history",
       icon: History,

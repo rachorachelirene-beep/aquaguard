@@ -27,6 +27,7 @@ import CameraSettings from "./pages/admin/CameraSettings";
 import Users from "./pages/admin/Users";
 
 import OfficerDashboard from "./pages/officer/OfficerDashboard";
+import OfficerLiveMonitoring from "./pages/officer/OfficerLiveMonitoring";
 import OfficerAlerts from "./pages/officer/OfficerAlerts";
 import OfficerAnnouncements from "./pages/officer/OfficerAnnouncements";
 import OfficerCoordinate from "./pages/officer/OfficerCoordinate";
@@ -188,6 +189,17 @@ export default function App() {
                 allowedRoles={["barangay_officer"]}
               >
                 <OfficerDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/officer/live-monitoring"
+            element={
+              <ProtectedRoute
+                allowedRoles={["barangay_officer"]}
+              >
+                <OfficerLiveMonitoring />
               </ProtectedRoute>
             }
           />

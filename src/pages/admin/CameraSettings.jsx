@@ -13,7 +13,6 @@ import {
   Database,
   Eye,
   Gauge,
-  Monitor,
   Radio,
   RefreshCw,
   Save,
@@ -28,6 +27,8 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { supabase } from "../../lib/supabase";
+import GaugeSettingsCard from "./GaugeSettingsCard";
+import { hasValidGaugePoints } from "./cameraSettingsUtils";
 
 import "./CameraSettings.css";
 
@@ -57,6 +58,18 @@ const defaultSettings = {
 
   min_level_m: "0.00",
   max_level_m: "3.00",
+  normal_level_m: "1.00",
+  warning_level_m: "2.00",
+  critical_level_m: "2.50",
+
+  gauge_enabled: "true",
+  gauge_points:
+    "0.70,0.12;0.80,0.13;0.75,0.88;0.64,0.87",
+  gauge_tick_interval_m: "0.25",
+  gauge_label_interval_m: "0.50",
+  waterline_row_coverage: "0.30",
+  waterline_fallback_row_coverage:
+    "0.08",
 
   default_station_id: "1",
   supabase_write_interval: "5",
@@ -519,7 +532,10 @@ export default function CameraSettings() {
       return undefined;
     }
 
-    checkService();
+    const initialCheck =
+      window.setTimeout(() => {
+        checkService();
+      }, 0);
 
     const interval =
       window.setInterval(
@@ -527,8 +543,13 @@ export default function CameraSettings() {
         10000
       );
 
-    return () =>
+    return () => {
+      window.clearTimeout(
+        initialCheck
+      );
+
       window.clearInterval(interval);
+    };
   }, [
     selectedStationId,
     checkService,
@@ -625,6 +646,41 @@ export default function CameraSettings() {
       -1
     );
 
+    const normalLevel = toNumber(
+      settings.normal_level_m,
+      -1
+    );
+
+    const warningLevel = toNumber(
+      settings.warning_level_m,
+      -1
+    );
+
+    const criticalLevel = toNumber(
+      settings.critical_level_m,
+      -1
+    );
+
+    const gaugeTick = toNumber(
+      settings.gauge_tick_interval_m,
+      -1
+    );
+
+    const gaugeLabel = toNumber(
+      settings.gauge_label_interval_m,
+      -1
+    );
+
+    const rowCoverage = toNumber(
+      settings.waterline_row_coverage,
+      -1
+    );
+
+    const fallbackCoverage = toNumber(
+      settings.waterline_fallback_row_coverage,
+      -1
+    );
+
     if (
       settings.camera_source ===
         "rtsp" &&
@@ -667,6 +723,43 @@ export default function CameraSettings() {
       maxLevel <= minLevel
     ) {
       return "Maximum water level must be greater than minimum water level.";
+    }
+
+    if (
+      normalLevel < minLevel ||
+      warningLevel < normalLevel ||
+      criticalLevel < warningLevel ||
+      criticalLevel > maxLevel
+    ) {
+      return "Water thresholds must stay between minimum and maximum level.";
+    }
+
+    if (
+      toBoolean(
+        settings.gauge_enabled,
+        true
+      ) &&
+      !hasValidGaugePoints(
+        settings.gauge_points
+      )
+    ) {
+      return "Gauge points must contain four x,y pairs.";
+    }
+
+    if (
+      gaugeTick <= 0 ||
+      gaugeLabel < gaugeTick
+    ) {
+      return "Gauge label interval must be greater than or equal to tick interval.";
+    }
+
+    if (
+      rowCoverage <= 0 ||
+      rowCoverage > 1 ||
+      fallbackCoverage <= 0 ||
+      fallbackCoverage > rowCoverage
+    ) {
+      return "Waterline coverage must be greater than 0 and not more than 1.";
     }
 
     return null;
@@ -764,6 +857,17 @@ export default function CameraSettings() {
         "",
         `MIN_LEVEL_M=${settings.min_level_m}`,
         `MAX_LEVEL_M=${settings.max_level_m}`,
+        `NORMAL_LEVEL_M=${settings.normal_level_m}`,
+        `WARNING_LEVEL_M=${settings.warning_level_m}`,
+        `CRITICAL_LEVEL_M=${settings.critical_level_m}`,
+        "",
+        `GAUGE_ENABLED=${settings.gauge_enabled}`,
+        `GAUGE_POINTS=${settings.gauge_points}`,
+        `GAUGE_TICK_INTERVAL_M=${settings.gauge_tick_interval_m}`,
+        `GAUGE_LABEL_INTERVAL_M=${settings.gauge_label_interval_m}`,
+        `WATERLINE_ROW_COVERAGE=${settings.waterline_row_coverage}`,
+        `WATERLINE_FALLBACK_ROW_COVERAGE=${settings.waterline_fallback_row_coverage}`,
+        "",
         `DEFAULT_STATION_ID=${
           selectedStationId ||
           settings.default_station_id
@@ -1640,6 +1744,81 @@ export default function CameraSettings() {
 
                 <label className="camera-field">
                   <span>
+                    Normal level
+                  </span>
+
+                  <div className="camera-unit-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        settings.normal_level_m
+                      }
+                      onChange={(event) =>
+                        updateSetting(
+                          "normal_level_m",
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <b>m</b>
+                  </div>
+                </label>
+
+                <label className="camera-field">
+                  <span>
+                    Warning level
+                  </span>
+
+                  <div className="camera-unit-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        settings.warning_level_m
+                      }
+                      onChange={(event) =>
+                        updateSetting(
+                          "warning_level_m",
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <b>m</b>
+                  </div>
+                </label>
+
+                <label className="camera-field">
+                  <span>
+                    Critical level
+                  </span>
+
+                  <div className="camera-unit-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        settings.critical_level_m
+                      }
+                      onChange={(event) =>
+                        updateSetting(
+                          "critical_level_m",
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <b>m</b>
+                  </div>
+                </label>
+
+                <label className="camera-field">
+                  <span>
                     Database interval
                   </span>
 
@@ -1664,6 +1843,14 @@ export default function CameraSettings() {
                 </label>
               </div>
             </section>
+            <GaugeSettingsCard
+              settings={settings}
+              updateSetting={updateSetting}
+              updateBooleanSetting={
+                updateBooleanSetting
+              }
+              toBoolean={toBoolean}
+            />
 
             <section className="camera-env-card">
               <header className="camera-card-header">

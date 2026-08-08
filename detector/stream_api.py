@@ -25,6 +25,45 @@ from ultralytics import YOLO
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env", override=True)
 
+try:
+    from .gauge import (  # type: ignore[import-not-found]  # noqa: E402
+        CRITICAL_LEVEL_M,
+        GAUGE_ENABLED,
+        GAUGE_LABEL_INTERVAL_M,
+        GAUGE_POINTS,
+        GAUGE_TICK_INTERVAL_M,
+        MAX_LEVEL_M,
+        MIN_LEVEL_M,
+        NORMAL_LEVEL_M,
+        WARNING_LEVEL_M,
+        WATERLINE_ROW_COVERAGE,
+        calculate_waterline,
+        draw_measurement_gauge,
+        level_to_y,
+        resolve_gauge_points as resolve_configured_gauge_points,
+        serialize_gauge_points,
+        waterline_to_level,
+    )
+except ImportError:
+    from gauge import (  # noqa: E402
+        CRITICAL_LEVEL_M,
+        GAUGE_ENABLED,
+        GAUGE_LABEL_INTERVAL_M,
+        GAUGE_POINTS,
+        GAUGE_TICK_INTERVAL_M,
+        MAX_LEVEL_M,
+        MIN_LEVEL_M,
+        NORMAL_LEVEL_M,
+        WARNING_LEVEL_M,
+        WATERLINE_ROW_COVERAGE,
+        calculate_waterline,
+        draw_measurement_gauge,
+        level_to_y,
+        resolve_gauge_points as resolve_configured_gauge_points,
+        serialize_gauge_points,
+        waterline_to_level,
+    )
+
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -113,21 +152,6 @@ YOLO_MAX_DETECTIONS = max(
 )
 
 YOLO_DEVICE = os.getenv("YOLO_DEVICE", "cpu").strip()
-
-MIN_LEVEL_M = float(os.getenv("MIN_LEVEL_M", "0.00"))
-MAX_LEVEL_M = float(os.getenv("MAX_LEVEL_M", "3.00"))
-
-NORMAL_LEVEL_M = float(
-    os.getenv("NORMAL_LEVEL_M", "1.00")
-)
-
-WARNING_LEVEL_M = float(
-    os.getenv("WARNING_LEVEL_M", "2.00")
-)
-
-CRITICAL_LEVEL_M = float(
-    os.getenv("CRITICAL_LEVEL_M", "2.50")
-)
 
 DEFAULT_STATION_ID = int(
     os.getenv("DEFAULT_STATION_ID", "1")
@@ -635,6 +659,8 @@ def update_camera_state(
 # YOLO detection
 # =========================================================
 
+
+
 def get_flood_class_ids() -> set[int]:
     if yolo_model is None:
         return {0}
@@ -655,49 +681,6 @@ def get_flood_class_ids() -> set[int]:
     return class_ids or {0}
 
 
-def calculate_waterline(
-    water_mask: np.ndarray,
-) -> int | None:
-    height, width = water_mask.shape[:2]
-
-    for row in range(
-        int(height * 0.05),
-        int(height * 0.95),
-    ):
-        row_coverage = (
-            np.count_nonzero(water_mask[row])
-            / max(1, width)
-        )
-
-        if row_coverage >= 0.30:
-            return row
-
-    return None
-
-
-def waterline_to_level(
-    waterline_y: int | None,
-    frame_height: int,
-) -> float:
-    if waterline_y is None:
-        return 0.0
-
-    ratio = (
-        frame_height - waterline_y
-    ) / max(1, frame_height)
-
-    level = (
-        MIN_LEVEL_M
-        + ratio * (MAX_LEVEL_M - MIN_LEVEL_M)
-    )
-
-    return round(
-        max(
-            MIN_LEVEL_M,
-            min(MAX_LEVEL_M, level),
-        ),
-        2,
-    )
 
 
 def determine_level_status(
@@ -720,6 +703,17 @@ def run_yolo_detection(
     frame: np.ndarray,
 ) -> tuple[dict, np.ndarray]:
     frame_height, frame_width = frame.shape[:2]
+    gauge_points = resolve_configured_gauge_points(
+        frame_width,
+        frame_height,
+        CAMERA_WIDTH,
+        CAMERA_HEIGHT,
+    )
+    measurement_mode = (
+        "calibrated_gauge"
+        if gauge_points is not None
+        else "frame_ratio"
+    )
 
     empty_mask = np.zeros(
         (frame_height, frame_width),
@@ -741,6 +735,11 @@ def run_yolo_detection(
             "waterline_y": None,
             "frame_width": frame_width,
             "frame_height": frame_height,
+            "measurement_mode": measurement_mode,
+            "gauge_enabled": gauge_points is not None,
+            "gauge_points": serialize_gauge_points(
+                gauge_points
+            ),
             "objects": [],
             "detected_at": datetime.now(
                 timezone.utc
@@ -875,6 +874,7 @@ def run_yolo_detection(
     level_m = waterline_to_level(
         waterline_y,
         frame_height,
+        gauge_points,
     )
 
     confidence = (
@@ -922,6 +922,11 @@ def run_yolo_detection(
         "waterline_y": waterline_y,
         "frame_width": frame_width,
         "frame_height": frame_height,
+        "measurement_mode": measurement_mode,
+        "gauge_enabled": gauge_points is not None,
+        "gauge_points": serialize_gauge_points(
+            gauge_points
+        ),
         "objects": objects,
         "detected_at": detected_at,
         "latest_frame_at": latest_frame_at,
@@ -933,25 +938,8 @@ def run_yolo_detection(
 
 # =========================================================
 # Frame annotation
-# =========================================================
 
-def level_to_y(
-    level_m: float,
-    frame_height: int,
-) -> int:
-    ratio = (
-        level_m - MIN_LEVEL_M
-    ) / max(
-        0.001,
-        MAX_LEVEL_M - MIN_LEVEL_M,
-    )
 
-    ratio = max(0.0, min(1.0, ratio))
-
-    return int(
-        frame_height
-        - ratio * frame_height
-    )
 
 
 def annotate_frame(
@@ -961,6 +949,12 @@ def annotate_frame(
 ) -> np.ndarray:
     output = normalize_camera_frame(frame)
     frame_height, frame_width = output.shape[:2]
+    gauge_points = resolve_configured_gauge_points(
+        frame_width,
+        frame_height,
+        CAMERA_WIDTH,
+        CAMERA_HEIGHT,
+    )
 
     if (
         water_mask is not None
@@ -982,48 +976,55 @@ def annotate_frame(
             0,
         )
 
-    threshold_lines = [
-        (
-            CRITICAL_LEVEL_M,
-            "CRITICAL",
-            (40, 40, 240),
-        ),
-        (
-            WARNING_LEVEL_M,
-            "WARNING",
-            (0, 150, 255),
-        ),
-        (
-            NORMAL_LEVEL_M,
-            "NORMAL",
-            (50, 210, 150),
-        ),
-    ]
+    if gauge_points is None:
+        threshold_lines = [
+            (
+                CRITICAL_LEVEL_M,
+                "CRITICAL",
+                (40, 40, 240),
+            ),
+            (
+                WARNING_LEVEL_M,
+                "WARNING",
+                (0, 150, 255),
+            ),
+            (
+                NORMAL_LEVEL_M,
+                "NORMAL",
+                (50, 210, 150),
+            ),
+        ]
 
-    for level, label, color in threshold_lines:
-        y_position = level_to_y(
-            level,
-            frame_height,
-        )
+        for level, label, color in threshold_lines:
+            y_position = level_to_y(
+                level,
+                frame_height,
+            )
 
-        cv2.line(
-            output,
-            (0, y_position),
-            (frame_width, y_position),
-            color,
-            2,
-        )
+            cv2.line(
+                output,
+                (0, y_position),
+                (frame_width, y_position),
+                color,
+                2,
+            )
 
-        cv2.putText(
-            output,
-            f"{label} {level:.2f}m",
-            (12, max(20, y_position - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.48,
-            color,
-            1,
-            cv2.LINE_AA,
-        )
+            cv2.putText(
+                output,
+                f"{label} {level:.2f}m",
+                (12, max(20, y_position - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.48,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+
+    draw_measurement_gauge(
+        output,
+        detection,
+        gauge_points,
+    )
 
     waterline_y = detection.get("waterline_y")
 
@@ -1063,6 +1064,14 @@ def annotate_frame(
         ("Coverage", f"{coverage:.1f}%"),
         ("AI Confidence", f"{confidence * 100:.0f}%"),
         ("Flood Risk", f"{risk * 100:.0f}%"),
+        (
+            "Mode",
+            (
+                "GAUGE"
+                if gauge_points is not None
+                else "FRAME"
+            ),
+        ),
         (
             "Station",
             str(detection.get("station_id", "--")),
@@ -1638,6 +1647,11 @@ def health():
             "yolo_enabled": YOLO_ENABLED,
             "yolo_loaded": yolo_model is not None,
             "yolo_error": yolo_error,
+            "gauge_enabled": GAUGE_ENABLED,
+            "gauge_points": GAUGE_POINTS,
+            "gauge_tick_interval_m": GAUGE_TICK_INTERVAL_M,
+            "gauge_label_interval_m": GAUGE_LABEL_INTERVAL_M,
+            "waterline_row_coverage": WATERLINE_ROW_COVERAGE,
             "supabase_connected": (
                 supabase is not None
             ),
