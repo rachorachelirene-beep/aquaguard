@@ -2017,6 +2017,11 @@ textarea.form-input {
   background: rgba(152, 162, 179, 0.12);
 }
 
+.lm-cam-badge.fallback {
+  color: #9a5f00;
+  background: rgba(245, 158, 11, 0.14);
+}
+
 .lm-viewport {
   position: relative;
   min-height: 470px;

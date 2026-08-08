@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -227,6 +228,7 @@ WEATHER_REQUEST_TIMEOUT_SECONDS = max(
 # Supabase station/weather context is refreshed in an existing background
 # database-write worker. Risk calculations themselves never perform I/O.
 RISK_CONTEXT_REFRESH_SECONDS = 60.0
+SSE_HEARTBEAT_SECONDS = 20.0
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
     "rtsp_transport;tcp|"
@@ -254,6 +256,7 @@ frame_lock = threading.Lock()
 state_lock = threading.Lock()
 station_lock = threading.Lock()
 risk_context_lock = threading.Lock()
+detection_condition = threading.Condition()
 
 latest_jpeg: bytes | None = None
 latest_camera_frame: np.ndarray | None = None
@@ -279,6 +282,7 @@ last_alert_times: dict[tuple[int, str], float] = {}
 risk_context_by_station: dict[str, dict] = {}
 risk_context_last_attempt: dict[str, float] = {}
 combined_risk_by_station: dict[str, dict] = {}
+detection_version = 0
 
 active_station_id = DEFAULT_STATION_ID
 
@@ -304,6 +308,126 @@ latest_detection = {
     "latest_frame_at": None,
     "error": None,
 }
+
+PUBLIC_DETECTION_FIELDS = (
+    "station_id",
+    "camera_connected",
+    "detection_enabled",
+    "detected",
+    "status",
+    "level_m",
+    "water_level",
+    "confidence",
+    "water_coverage",
+    "flood_risk",
+    "weather_risk",
+    "waterline_y",
+    "frame_width",
+    "frame_height",
+    "detected_at",
+    "latest_frame_at",
+    "error",
+    "combined_risk",
+)
+
+
+def notify_detection_clients() -> int:
+    """Wake SSE consumers after already-computed detection state changes."""
+
+    global detection_version
+
+    with detection_condition:
+        detection_version += 1
+        detection_condition.notify_all()
+        return detection_version
+
+
+def sanitize_public_error(value: object) -> str | None:
+    """Remove URL user-info and configured secrets from public errors."""
+
+    if value is None:
+        return None
+
+    message = str(value)
+    message = re.sub(
+        r"(?i)(rtsp://)[^\s/@]+@",
+        r"\1***@",
+        message,
+    )
+
+    for secret in (
+        CAMERA_USERNAME,
+        CAMERA_PASSWORD,
+        SUPABASE_SECRET_KEY,
+    ):
+        if secret:
+            message = message.replace(
+                secret,
+                "***",
+            )
+
+    return message
+
+
+def get_public_detection_snapshot() -> dict:
+    """Return the small, credential-safe state shared by JSON and SSE."""
+
+    with state_lock:
+        snapshot = {
+            field: latest_detection.get(field)
+            for field in PUBLIC_DETECTION_FIELDS
+        }
+        snapshot["camera_connected"] = camera_connected
+        snapshot["latest_frame_at"] = latest_frame_at
+        snapshot["error"] = sanitize_public_error(
+            snapshot.get("error") or camera_error
+        )
+
+    return snapshot
+
+
+def format_detection_sse_event(payload: dict) -> str:
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+    return f"event: detection\ndata: {serialized}\n\n"
+
+
+def generate_detection_events(
+    *,
+    heartbeat_seconds: float = SSE_HEARTBEAT_SECONDS,
+):
+    """Stream state copies; never invoke capture, inference, or storage."""
+
+    with detection_condition:
+        last_version = detection_version
+
+    try:
+        yield format_detection_sse_event(
+            get_public_detection_snapshot()
+        )
+
+        while True:
+            with detection_condition:
+                has_update = detection_condition.wait_for(
+                    lambda: detection_version != last_version,
+                    timeout=max(0.001, heartbeat_seconds),
+                )
+
+                if has_update:
+                    last_version = detection_version
+
+            if has_update:
+                yield format_detection_sse_event(
+                    get_public_detection_snapshot()
+                )
+            else:
+                yield ": keepalive\n\n"
+    except GeneratorExit:
+        return
 
 
 # =========================================================
@@ -679,6 +803,8 @@ def publish_combined_risk(detection: dict) -> dict:
     )
     detection["combined_risk"] = result
 
+    published = False
+
     with state_lock:
         if (
             latest_detection.get("station_id")
@@ -687,6 +813,10 @@ def publish_combined_risk(detection: dict) -> dict:
             == detection.get("detected_at")
         ):
             latest_detection["combined_risk"] = result
+            published = True
+
+    if published:
+        notify_detection_clients()
 
     return result
 
@@ -1001,12 +1131,47 @@ def update_camera_state(
     global camera_connected
     global camera_error
     global active_camera_source
+    global latest_detection
 
-    camera_connected = connected
-    camera_error = error
+    public_error = (
+        None
+        if connected
+        else error or "Camera connection unavailable."
+    )
 
-    if not connected:
-        active_camera_source = None
+    with state_lock:
+        state_changed = (
+            camera_connected != connected
+            or camera_error != public_error
+        )
+        camera_connected = connected
+        camera_error = public_error
+
+        if not connected:
+            active_camera_source = None
+
+        if state_changed:
+            current_status = str(
+                latest_detection.get("status") or "waiting"
+            )
+            latest_detection = {
+                **latest_detection,
+                "camera_connected": connected,
+                "status": (
+                    "error"
+                    if not connected
+                    else (
+                        "waiting"
+                        if current_status == "error"
+                        else current_status
+                    )
+                ),
+                "latest_frame_at": latest_frame_at,
+                "error": public_error,
+            }
+
+    if state_changed:
+        notify_detection_clients()
 
 
 # =========================================================
@@ -1835,6 +2000,8 @@ def camera_capture_loop() -> None:
                     with state_lock:
                         latest_detection = detection
                         latest_water_mask = water_mask
+
+                    notify_detection_clients()
                 else:
                     with state_lock:
                         detection = dict(
@@ -1917,14 +2084,6 @@ def camera_capture_loop() -> None:
                 error_message,
             )
 
-            with state_lock:
-                latest_detection = {
-                    **latest_detection,
-                    "camera_connected": False,
-                    "status": "error",
-                    "error": error_message,
-                }
-
             time.sleep(3)
 
         finally:
@@ -1995,6 +2154,7 @@ def index():
             "snapshot_endpoint": "/snapshot",
             "health_endpoint": "/health",
             "detection_endpoint": "/latest_detection",
+            "detection_stream_endpoint": "/detection_stream",
             "flood_risk_endpoint": "/flood_risk",
             "weather_status_endpoint": "/weather_status",
         }
@@ -2011,6 +2171,11 @@ def health():
         requested_station_id
     )
 
+    with state_lock:
+        latest_detection_at = latest_detection.get(
+            "detected_at"
+        )
+
     return jsonify(
         {
             "service": "AquaGuard Camera API",
@@ -2021,6 +2186,8 @@ def health():
             "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "camera_connected": camera_connected,
             "latest_frame_at": latest_frame_at,
+            "latest_detection_at": latest_detection_at,
+            "detection_stream_available": True,
             "camera_error": camera_error,
             "yolo_enabled": YOLO_ENABLED,
             "yolo_loaded": yolo_model is not None,
@@ -2097,6 +2264,48 @@ def get_latest_detection():
     )
 
     return jsonify(response_data)
+
+
+@app.get("/detection_stream")
+def detection_stream():
+    requested_station_id = request.args.get(
+        "station_id"
+    )
+
+    if requested_station_id is not None:
+        try:
+            parsed_station_id = int(
+                requested_station_id
+            )
+
+            if parsed_station_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "station_id must be a positive integer."
+                        )
+                    }
+                ),
+                400,
+            )
+
+    # Subscribing never changes the physical detector's active station.
+    # Every payload identifies the single active detector via station_id.
+    return Response(
+        generate_detection_events(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-AquaGuard-Station-Scope": (
+                "single-active-detector"
+            ),
+        },
+    )
 
 
 @app.get("/flood_risk")
@@ -2256,6 +2465,10 @@ if __name__ == "__main__":
     print(
         "Detection: "
         f"http://localhost:{FLASK_PORT}/latest_detection"
+    )
+    print(
+        "Detection stream: "
+        f"http://localhost:{FLASK_PORT}/detection_stream"
     )
     print(
         "Flood risk: "

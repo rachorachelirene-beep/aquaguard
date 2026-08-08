@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import useRealtimeDetection from "../../hooks/useRealtimeDetection";
 import { supabase } from "../../lib/supabase";
 
 const defaultCameraApiUrl =
@@ -233,7 +234,6 @@ function LiveMonitoringContent({ routePrefix }) {
   const [yolo, setYolo] = useState(null);
   const [detector, setDetector] = useState(null);
   const [detectorHealth, setDetectorHealth] = useState(null);
-  const [liveDetection, setLiveDetection] = useState(null);
   const [cameraSources, setCameraSources] = useState([]);
   const [streamStatus, setStreamStatus] = useState({
     key: "",
@@ -447,57 +447,71 @@ function LiveMonitoringContent({ routePrefix }) {
     ? String(selectedStation.id)
     : "";
 
+  const {
+    detection: liveDetection,
+    transport: detectionTransport,
+  } = useRealtimeDetection({
+    cameraApiBaseUrl,
+    stationId: selectedStationId,
+  });
+
   useEffect(() => {
     let active = true;
     const cleanBase = cameraApiBaseUrl.replace(/\/+$/, "");
+    let requestController = null;
 
-    async function loadDetectorState() {
-      const params = new URLSearchParams();
-
-      if (selectedStationId) {
-        params.set("station_id", selectedStationId);
-      }
-
-      const query = params.toString();
-      const suffix = query ? `?${query}` : "";
+    async function loadDetectorHealth() {
+      requestController?.abort();
+      const controller = new AbortController();
+      requestController = controller;
 
       try {
-        const [healthResponse, detectionResponse] = await Promise.all([
-          fetch(`${cleanBase}/health${suffix}`),
-          fetch(`${cleanBase}/latest_detection${suffix}`),
-        ]);
+        const healthResponse = await fetch(
+          `${cleanBase}/health`,
+          {
+            signal: controller.signal,
+          }
+        );
 
-        if (!healthResponse.ok || !detectionResponse.ok) {
+        if (!healthResponse.ok) {
           throw new Error("Detector API returned an error response.");
         }
 
-        const [healthData, detectionData] = await Promise.all([
-          healthResponse.json(),
-          detectionResponse.json(),
-        ]);
+        const healthData = await healthResponse.json();
 
         if (active) {
           setDetectorHealth(healthData);
-          setLiveDetection(detectionData);
         }
       } catch (error) {
-        if (active) {
+        if (
+          active &&
+          error.name !== "AbortError"
+        ) {
           setDetectorHealth(null);
-          setLiveDetection(null);
+          console.warn(
+            "Detector API health unavailable:",
+            error
+          );
         }
-
-        console.warn("Detector API status unavailable:", error);
       }
     }
 
-    loadDetectorState();
-    const interval = window.setInterval(loadDetectorState, 7000);
+    const initialLoad = window.setTimeout(
+      loadDetectorHealth,
+      0
+    );
+    const interval = window.setInterval(
+      loadDetectorHealth,
+      15000
+    );
 
     return () => {
       active = false;
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
+      requestController?.abort();
     };
-  }, [cameraApiBaseUrl, selectedStationId]);
+  }, [cameraApiBaseUrl]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -511,9 +525,7 @@ function LiveMonitoringContent({ routePrefix }) {
     stationReadings.find(
       (row) => String(row.station.id) === selectedStationId
     )?.reading ?? historyRows[0] ?? null;
-  const currentDetection = liveDetection?.detected_at
-    ? liveDetection
-    : detector;
+  const currentDetection = liveDetection ?? detector;
   const combinedRisk = currentDetection?.combined_risk ?? null;
   const combinedRiskAssessed = Boolean(combinedRisk?.assessed);
   const combinedRiskScore = combinedRiskAssessed
@@ -553,6 +565,18 @@ function LiveMonitoringContent({ routePrefix }) {
     now
   );
   const detectorFresh = detectorAge != null && detectorAge <= 5;
+  const detectionTransportLabel =
+    detectionTransport === "live"
+      ? "Metrics Live"
+      : detectionTransport === "polling"
+        ? "Polling Fallback"
+        : "Metrics Reconnecting";
+  const detectionTransportTone =
+    detectionTransport === "live"
+      ? "good"
+      : detectionTransport === "polling"
+        ? "fallback"
+        : "muted";
   const streamUrl = useMemo(
     () => buildStreamUrl(cameraApiBaseUrl, selectedStationId, streamVersion),
     [cameraApiBaseUrl, selectedStationId, streamVersion]
@@ -756,6 +780,12 @@ function LiveMonitoringContent({ routePrefix }) {
                         }`}
                       >
                         {detectorFresh ? "AI Active" : "AI Waiting"}
+                      </span>
+                      <span
+                        className={`lm-cam-badge ${detectionTransportTone}`}
+                        title="Detection metrics connection"
+                      >
+                        {detectionTransportLabel}
                       </span>
                     </div>
 

@@ -20,6 +20,7 @@ class StreamApiRiskTests(unittest.TestCase):
                 "/health",
                 "/video_feed",
                 "/latest_detection",
+                "/detection_stream",
                 "/snapshot",
                 "/weather_status",
                 "/flood_risk",
