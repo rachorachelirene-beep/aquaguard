@@ -37,6 +37,12 @@ import { supabase } from "../../lib/supabase";
 import "./Weather.css";
 
 
+const cameraApiBaseUrl = (
+  import.meta.env.VITE_CAMERA_API_URL ??
+  "http://localhost:5000"
+).replace(/\/+$/, "");
+
+
 function toNumber(value, fallback = 0) {
   const number = Number(value);
 
@@ -264,6 +270,45 @@ function getRiskDetails(riskValue) {
 }
 
 
+function getCombinedRiskDetails(risk) {
+  const score = Number(risk?.score);
+
+  if (
+    !risk?.assessed ||
+    !Number.isFinite(score)
+  ) {
+    return {
+      score: null,
+      label: "Not assessed",
+      description:
+        risk?.primary_reason ||
+        "Insufficient monitoring data.",
+      className: "weather-risk-neutral",
+      isNeutral: true,
+    };
+  }
+
+  const classNames = {
+    normal: "weather-risk-low",
+    moderate: "weather-risk-moderate",
+    high: "weather-risk-high",
+    critical: "weather-risk-critical",
+  };
+
+  return {
+    score: clamp(score, 0, 100),
+    label: risk.label || "Assessed",
+    description:
+      risk.primary_reason ||
+      "Combined monitoring inputs were assessed.",
+    className:
+      classNames[risk.level] ||
+      "weather-risk-low",
+    isNeutral: false,
+  };
+}
+
+
 export default function Weather() {
   const [stations, setStations] =
     useState([]);
@@ -275,6 +320,9 @@ export default function Weather() {
 
   const [weatherRows, setWeatherRows] =
     useState([]);
+
+  const [combinedRisk, setCombinedRisk] =
+    useState(null);
 
   const [loading, setLoading] =
     useState(true);
@@ -394,6 +442,7 @@ export default function Weather() {
     useCallback(async () => {
       if (!selectedStationId) {
         setWeatherRows([]);
+        setCombinedRisk(null);
         setLoading(false);
         return;
       }
@@ -402,8 +451,8 @@ export default function Weather() {
         setLoading(true);
         setErrorMessage("");
 
-        const { data, error } =
-          await supabase
+        const weatherPromise =
+          supabase
             .from(
               "weather_readings"
             )
@@ -431,12 +480,47 @@ export default function Weather() {
             })
             .limit(72);
 
+        const riskPromise = fetch(
+          `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
+            selectedStationId
+          )}`
+        )
+          .then(async (response) => {
+            if (!response.ok) {
+              throw new Error(
+                "Combined-risk endpoint is unavailable."
+              );
+            }
+
+            return response.json();
+          })
+          .catch((error) => {
+            console.warn(
+              "Combined risk unavailable:",
+              error
+            );
+            return null;
+          });
+
+        const [
+          { data, error },
+          riskPayload,
+        ] = await Promise.all([
+          weatherPromise,
+          riskPromise,
+        ]);
+
         if (error) {
           throw error;
         }
 
         setWeatherRows(
           data ?? []
+        );
+
+        setCombinedRisk(
+          riskPayload?.combined_risk ??
+            null
         );
 
         setLastUpdated(
@@ -512,10 +596,20 @@ export default function Weather() {
     weatherDetails.icon;
 
 
-  const riskDetails =
-    getRiskDetails(
-      latestWeather?.flood_risk
+  const combinedRiskDetails =
+    getCombinedRiskDetails(
+      combinedRisk
     );
+
+  const combinedRiskFactors =
+    Array.isArray(
+      combinedRisk?.factors
+    )
+      ? combinedRisk.factors.slice(
+          0,
+          6
+        )
+      : [];
 
 
   const temperature = toNumber(
@@ -671,11 +765,12 @@ export default function Weather() {
               value={
                 selectedStationId
               }
-              onChange={(event) =>
+              onChange={(event) => {
+                setCombinedRisk(null);
                 setSelectedStationId(
                   event.target.value
-                )
-              }
+                );
+              }}
             >
               {stations.length ===
                 0 && (
@@ -909,7 +1004,7 @@ export default function Weather() {
         </section>
 
         <section
-          className={`weather-risk-card ${riskDetails.className}`}
+          className={`weather-risk-card ${combinedRiskDetails.className}`}
         >
           <div className="weather-risk-icon">
             <Gauge size={31} />
@@ -917,35 +1012,61 @@ export default function Weather() {
 
           <div>
             <span className="weather-eyebrow">
-              Weather flood risk
+              AquaGuard flood risk
             </span>
 
             <h3>
-              {riskDetails.isNeutral
-                ? riskDetails.label
-                : `${riskDetails.label} Risk`}
+              {combinedRiskDetails.label}
             </h3>
 
             <p>
               {
-                riskDetails.description
+                combinedRiskDetails.description
               }
             </p>
           </div>
 
           <div className="weather-risk-percentage">
             <strong>
-              {riskDetails.isNeutral
+              {combinedRiskDetails.isNeutral
                 ? "--"
-                : `${riskDetails.percentage}%`}
+                : `${Math.round(
+                    combinedRiskDetails.score
+                  )}/100`}
             </strong>
 
             <span>
-              {riskDetails.isNeutral
-                ? "Combined model pending"
-                : "Current risk score"}
+              {combinedRiskDetails.isNeutral
+                ? "Insufficient monitoring data"
+                : "Rule-based assessment score"}
             </span>
           </div>
+
+          {combinedRiskFactors.length > 0 && (
+            <div className="weather-risk-factors">
+              <strong>
+                Contributing factors
+              </strong>
+
+              <div>
+                {combinedRiskFactors.map(
+                  (factor) => (
+                    <span key={factor.name}>
+                      <b>{factor.name}</b>
+                      <em>
+                        {factor.value}
+                      </em>
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          <small className="weather-risk-method">
+            AquaGuard rule-based flood-risk heuristic · monitoring indicator,
+            not a scientifically validated prediction model
+          </small>
         </section>
 
         <section className="weather-chart-card">

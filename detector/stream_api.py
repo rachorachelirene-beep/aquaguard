@@ -75,6 +75,17 @@ except ImportError:
         start_weather_service,
     )
 
+try:
+    from .flood_risk import (  # type: ignore[import-not-found]  # noqa: E402
+        calculate_combined_flood_risk,
+        not_assessed_flood_risk,
+    )
+except ImportError:
+    from flood_risk import (  # noqa: E402
+        calculate_combined_flood_risk,
+        not_assessed_flood_risk,
+    )
+
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -213,6 +224,10 @@ WEATHER_REQUEST_TIMEOUT_SECONDS = max(
     ),
 )
 
+# Supabase station/weather context is refreshed in an existing background
+# database-write worker. Risk calculations themselves never perform I/O.
+RISK_CONTEXT_REFRESH_SECONDS = 60.0
+
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
     "rtsp_transport;tcp|"
     "fflags;nobuffer|"
@@ -238,6 +253,7 @@ CORS(app)
 frame_lock = threading.Lock()
 state_lock = threading.Lock()
 station_lock = threading.Lock()
+risk_context_lock = threading.Lock()
 
 latest_jpeg: bytes | None = None
 latest_camera_frame: np.ndarray | None = None
@@ -260,6 +276,10 @@ supabase_error: str | None = None
 alert_lock = threading.Lock()
 last_alert_times: dict[tuple[int, str], float] = {}
 
+risk_context_by_station: dict[str, dict] = {}
+risk_context_last_attempt: dict[str, float] = {}
+combined_risk_by_station: dict[str, dict] = {}
+
 active_station_id = DEFAULT_STATION_ID
 
 latest_detection = {
@@ -273,6 +293,9 @@ latest_detection = {
     "confidence": None,
     "water_coverage": None,
     "flood_risk": None,
+    "combined_risk": not_assessed_flood_risk(
+        "Waiting for a usable monitoring detection."
+    ),
     "waterline_y": None,
     "frame_width": None,
     "frame_height": None,
@@ -416,6 +439,272 @@ def set_active_station_id(value: str | int | None) -> int:
         active_station_id = station_id
 
     return station_id
+
+
+# =========================================================
+# Combined-risk context and cache
+# =========================================================
+
+def refresh_risk_context(
+    station_id: int,
+    *,
+    force: bool = False,
+) -> None:
+    """Refresh station thresholds and latest stored weather in a worker."""
+
+    if supabase is None:
+        return
+
+    cache_key = str(station_id)
+    attempt_time = time.monotonic()
+
+    with risk_context_lock:
+        last_attempt = risk_context_last_attempt.get(
+            cache_key,
+            0.0,
+        )
+
+        if (
+            not force
+            and attempt_time - last_attempt
+            < RISK_CONTEXT_REFRESH_SECONDS
+        ):
+            return
+
+        # Set before network I/O so overlapping database-write workers do not
+        # issue duplicate context queries for the same station.
+        risk_context_last_attempt[cache_key] = attempt_time
+
+    station_row: dict | None = None
+    weather_row: dict | None = None
+    station_loaded = False
+    weather_loaded = False
+
+    try:
+        station_response = (
+            supabase.table("stations")
+            .select(
+                "id,normal_level,warning_level,critical_level"
+            )
+            .eq("id", station_id)
+            .limit(1)
+            .execute()
+        )
+        station_rows = getattr(
+            station_response,
+            "data",
+            None,
+        ) or []
+        station_row = (
+            station_rows[0]
+            if station_rows
+            and isinstance(station_rows[0], dict)
+            else None
+        )
+        station_loaded = True
+    except Exception as error:
+        print(
+            "Combined-risk station context error | "
+            f"station={station_id}: {error}"
+        )
+
+    try:
+        weather_response = (
+            supabase.table("weather_readings")
+            .select(
+                "station_id,rain_1h,rain_6h,weather_code,"
+                "condition_text,recorded_at"
+            )
+            .eq("station_id", station_id)
+            .order("recorded_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        weather_rows = getattr(
+            weather_response,
+            "data",
+            None,
+        ) or []
+        weather_row = (
+            weather_rows[0]
+            if weather_rows
+            and isinstance(weather_rows[0], dict)
+            else None
+        )
+        weather_loaded = True
+    except Exception as error:
+        print(
+            "Combined-risk weather context error | "
+            f"station={station_id}: {error}"
+        )
+
+    with risk_context_lock:
+        context = dict(
+            risk_context_by_station.get(
+                cache_key,
+                {},
+            )
+        )
+
+        if station_loaded:
+            context["station"] = station_row
+
+        if weather_loaded:
+            context["weather"] = weather_row
+
+        context["refreshed_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        risk_context_by_station[cache_key] = context
+
+
+def get_risk_context(station_id: int) -> dict:
+    with risk_context_lock:
+        return dict(
+            risk_context_by_station.get(
+                str(station_id),
+                {},
+            )
+        )
+
+
+def calculate_detection_combined_risk(
+    detection: dict,
+) -> dict:
+    """Calculate from cached context only; this function performs no I/O."""
+
+    station_id = int(
+        detection.get("station_id")
+        or get_active_station_id()
+    )
+    context = get_risk_context(station_id)
+    station = context.get("station")
+    weather = context.get("weather")
+
+    station_has_thresholds = bool(
+        isinstance(station, dict)
+        and station.get("normal_level") is not None
+        and station.get("warning_level") is not None
+        and station.get("critical_level") is not None
+    )
+
+    normal_level = (
+        station.get("normal_level")
+        if station_has_thresholds
+        else NORMAL_LEVEL_M
+    )
+    warning_level = (
+        station.get("warning_level")
+        if station_has_thresholds
+        else WARNING_LEVEL_M
+    )
+    critical_level = (
+        station.get("critical_level")
+        if station_has_thresholds
+        else CRITICAL_LEVEL_M
+    )
+
+    yolo_available = bool(
+        detection.get("detection_enabled")
+    )
+    flood_detected = (
+        bool(detection.get("detected"))
+        if yolo_available
+        else None
+    )
+    water_measurement_valid = bool(
+        yolo_available
+        and detection.get("detected")
+        and detection.get("waterline_y") is not None
+        and detection.get("level_m") is not None
+    )
+
+    result = calculate_combined_flood_risk(
+        water_level=(
+            detection.get("level_m")
+            if water_measurement_valid
+            else None
+        ),
+        normal_level=normal_level,
+        warning_level=warning_level,
+        critical_level=critical_level,
+        threshold_source=(
+            "station"
+            if station_has_thresholds
+            else "detector_defaults"
+        ),
+        detector_status=detection.get("status"),
+        yolo_available=yolo_available,
+        flood_detected=flood_detected,
+        yolo_confidence=detection.get("confidence"),
+        water_coverage=detection.get("water_coverage"),
+        rain_1h=(
+            weather.get("rain_1h")
+            if isinstance(weather, dict)
+            else None
+        ),
+        rain_6h=(
+            weather.get("rain_6h")
+            if isinstance(weather, dict)
+            else None
+        ),
+        weather_code=(
+            weather.get("weather_code")
+            if isinstance(weather, dict)
+            else None
+        ),
+        condition_text=(
+            weather.get("condition_text")
+            if isinstance(weather, dict)
+            else None
+        ),
+        weather_recorded_at=(
+            weather.get("recorded_at")
+            if isinstance(weather, dict)
+            else None
+        ),
+    )
+
+    with risk_context_lock:
+        combined_risk_by_station[
+            str(station_id)
+        ] = result
+
+    return result
+
+
+def publish_combined_risk(detection: dict) -> dict:
+    result = calculate_detection_combined_risk(
+        detection
+    )
+    detection["combined_risk"] = result
+
+    with state_lock:
+        if (
+            latest_detection.get("station_id")
+            == detection.get("station_id")
+            and latest_detection.get("detected_at")
+            == detection.get("detected_at")
+        ):
+            latest_detection["combined_risk"] = result
+
+    return result
+
+
+def get_cached_combined_risk(
+    station_id: int,
+) -> dict:
+    with risk_context_lock:
+        result = combined_risk_by_station.get(
+            str(station_id)
+        )
+
+        if result is not None:
+            return dict(result)
+
+    return not_assessed_flood_risk(
+        "No combined-risk result is available for this station yet."
+    )
 
 
 # =========================================================
@@ -813,6 +1102,12 @@ def run_yolo_detection(
             "error": yolo_error,
         }
 
+        result["combined_risk"] = (
+            calculate_detection_combined_risk(
+                result
+            )
+        )
+
         return result, empty_mask
 
     safe_frame = normalize_camera_frame(frame)
@@ -997,6 +1292,12 @@ def run_yolo_detection(
         "latest_frame_at": latest_frame_at,
         "error": None,
     }
+
+    result["combined_risk"] = (
+        calculate_detection_combined_risk(
+            result
+        )
+    )
 
     return result, water_mask
 
@@ -1328,6 +1629,11 @@ def write_detection_to_supabase(
     station_id = int(
         detection["station_id"]
     )
+
+    # This function already runs outside the capture loop. Refreshing cached
+    # Supabase context here keeps camera/YOLO processing non-blocking.
+    refresh_risk_context(station_id)
+    publish_combined_risk(detection)
 
     level_m = float(
         detection.get("level_m") or 0.0
@@ -1689,6 +1995,7 @@ def index():
             "snapshot_endpoint": "/snapshot",
             "health_endpoint": "/health",
             "detection_endpoint": "/latest_detection",
+            "flood_risk_endpoint": "/flood_risk",
             "weather_status_endpoint": "/weather_status",
         }
     )
@@ -1790,6 +2097,46 @@ def get_latest_detection():
     )
 
     return jsonify(response_data)
+
+
+@app.get("/flood_risk")
+def get_flood_risk():
+    requested_station_id = request.args.get(
+        "station_id"
+    )
+
+    if requested_station_id is None:
+        station_id = get_active_station_id()
+    else:
+        try:
+            station_id = int(
+                requested_station_id
+            )
+
+            if station_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "station_id must be a positive integer."
+                        )
+                    }
+                ),
+                400,
+            )
+
+    return jsonify(
+        {
+            "station_id": station_id,
+            "combined_risk": (
+                get_cached_combined_risk(
+                    station_id
+                )
+            ),
+        }
+    )
 
 
 @app.get("/video_feed")
@@ -1909,6 +2256,10 @@ if __name__ == "__main__":
     print(
         "Detection: "
         f"http://localhost:{FLASK_PORT}/latest_detection"
+    )
+    print(
+        "Flood risk: "
+        f"http://localhost:{FLASK_PORT}/flood_risk"
     )
     print(
         "Weather: "

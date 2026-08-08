@@ -2462,6 +2462,41 @@ textarea.form-input {
   color: #111111;
 }
 
+.lm-risk-reason {
+  margin: 8px 0 0;
+  color: #475467;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.lm-risk-factors {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.lm-risk-factors span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #667085;
+  font-size: 0.73rem;
+}
+
+.lm-risk-factors b {
+  color: #344054;
+  font-weight: 700;
+}
+
+.lm-risk-method {
+  display: block;
+  margin-top: 9px;
+  color: #667085;
+  font-size: 0.67rem;
+  line-height: 1.4;
+}
+
 .lm-action-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -3503,6 +3538,7 @@ html[data-aq-theme="dark"] .lm-station-name,
 html[data-aq-theme="dark"] .lm-feed-footer strong,
 html[data-aq-theme="dark"] .lm-health-item strong,
 html[data-aq-theme="dark"] .lm-risk-meta strong,
+html[data-aq-theme="dark"] .lm-risk-factors b,
 html[data-aq-theme="dark"] .lm-alert-item strong,
 html[data-aq-theme="dark"] .admin-shell main[class$="-page"] h1,
 html[data-aq-theme="dark"] .admin-shell main[class$="-page"] h2,

@@ -514,6 +514,16 @@ function LiveMonitoringContent({ routePrefix }) {
   const currentDetection = liveDetection?.detected_at
     ? liveDetection
     : detector;
+  const combinedRisk = currentDetection?.combined_risk ?? null;
+  const combinedRiskAssessed = Boolean(combinedRisk?.assessed);
+  const combinedRiskScore = combinedRiskAssessed
+    ? clamp(toNumber(combinedRisk?.score, 0))
+    : null;
+  const combinedRiskFactors = Array.isArray(combinedRisk?.factors)
+    ? combinedRisk.factors
+        .filter((factor) => factor?.impact !== "unavailable")
+        .slice(0, 3)
+    : [];
 
   const criticalLevel = toNumber(selectedStation?.critical_level, 2.5);
   const warningLevel = toNumber(selectedStation?.warning_level, 2);
@@ -796,11 +806,11 @@ function LiveMonitoringContent({ routePrefix }) {
                           </strong>
                         </span>
                         <span>
-                          Risk{" "}
+                          Combined{" "}
                           <strong>
-                            {formatPercent(
-                              currentDetection?.flood_risk ?? yolo?.flood_risk
-                            )}
+                            {combinedRiskScore == null
+                              ? "--"
+                              : `${Math.round(combinedRiskScore)}/100`}
                           </strong>
                         </span>
                       </div>
@@ -1050,7 +1060,7 @@ function LiveMonitoringContent({ routePrefix }) {
                   <div className="lm-info-card">
                     <div className="lm-info-heading">
                       <ShieldAlert size={18} />
-                      <span>Weather And AI Risk</span>
+                      <span>Combined Flood Risk</span>
                     </div>
                     <div className="lm-weather-lines">
                       <span>{weather?.condition_text ?? "No weather data"}</span>
@@ -1067,24 +1077,40 @@ function LiveMonitoringContent({ routePrefix }) {
                       <span
                         className="lm-risk-fill"
                         style={{
-                          width: `${normalizePercent(
-                            currentDetection?.flood_risk ??
-                              yolo?.flood_risk ??
-                              weather?.flood_risk
-                          ) ?? 0}%`,
+                          width: `${combinedRiskScore ?? 0}%`,
                         }}
                       />
                     </div>
                     <div className="lm-risk-meta">
-                      <span>Flood risk</span>
+                      <span>
+                        {combinedRiskAssessed
+                          ? combinedRisk.label
+                          : "Not assessed"}
+                      </span>
                       <strong>
-                        {formatPercent(
-                          currentDetection?.flood_risk ??
-                            yolo?.flood_risk ??
-                            weather?.flood_risk
-                        )}
+                        {combinedRiskScore == null
+                          ? "--"
+                          : `${Math.round(combinedRiskScore)}/100`}
                       </strong>
                     </div>
+                    <p className="lm-risk-reason">
+                      {combinedRisk?.primary_reason ??
+                        "Insufficient monitoring data."}
+                    </p>
+                    {combinedRiskFactors.length > 0 && (
+                      <div className="lm-risk-factors">
+                        {combinedRiskFactors.map((factor) => (
+                          <span key={factor.name}>
+                            <b>{factor.name}</b>
+                            {factor.value}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <small className="lm-risk-method">
+                      AquaGuard rule-based flood-risk heuristic · monitoring
+                      score, not flood probability
+                    </small>
                   </div>
 
                   <div className="lm-info-card">

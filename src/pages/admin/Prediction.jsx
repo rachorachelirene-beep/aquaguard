@@ -35,6 +35,12 @@ import { supabase } from "../../lib/supabase";
 import "./Prediction.css";
 
 
+const cameraApiBaseUrl = (
+  import.meta.env.VITE_CAMERA_API_URL ??
+  "http://localhost:5000"
+).replace(/\/+$/, "");
+
+
 function toNumber(value, fallback = 0) {
   const number = Number(value);
 
@@ -95,9 +101,9 @@ function getRiskDetails(riskPercent) {
   if (riskPercent >= 80) {
     return {
       key: "critical",
-      label: "Critical Risk",
+      label: "Critical indicator",
       description:
-        "Immediate flooding is highly possible.",
+        "The prototype projection reaches its highest monitoring band.",
       className: "prediction-risk-critical",
       icon: TriangleAlert,
     };
@@ -106,9 +112,9 @@ function getRiskDetails(riskPercent) {
   if (riskPercent >= 55) {
     return {
       key: "high",
-      label: "High Risk",
+      label: "High indicator",
       description:
-        "Flooding may occur if conditions continue.",
+        "The prototype projection indicates elevated monitoring conditions.",
       className: "prediction-risk-high",
       icon: TriangleAlert,
     };
@@ -117,9 +123,9 @@ function getRiskDetails(riskPercent) {
   if (riskPercent >= 30) {
     return {
       key: "moderate",
-      label: "Moderate Risk",
+      label: "Moderate indicator",
       description:
-        "Monitor water and weather conditions.",
+        "The prototype projection indicates conditions worth monitoring.",
       className: "prediction-risk-moderate",
       icon: Activity,
     };
@@ -127,11 +133,72 @@ function getRiskDetails(riskPercent) {
 
   return {
     key: "low",
-    label: "Low Risk",
+    label: "Normal indicator",
     description:
-      "Current conditions remain within a safe range.",
+      "The prototype projection remains in its lowest monitoring band.",
     className: "prediction-risk-low",
     icon: ShieldCheck,
+  };
+}
+
+
+function getCombinedRiskDetails(risk) {
+  const score = Number(risk?.score);
+
+  if (
+    !risk?.assessed ||
+    !Number.isFinite(score)
+  ) {
+    return {
+      score: null,
+      label: "Not assessed",
+      description:
+        risk?.primary_reason ||
+        "Insufficient monitoring data.",
+      className:
+        "prediction-risk-neutral",
+      icon: Activity,
+      isNeutral: true,
+    };
+  }
+
+  const presentations = {
+    normal: {
+      className:
+        "prediction-risk-low",
+      icon: ShieldCheck,
+    },
+    moderate: {
+      className:
+        "prediction-risk-moderate",
+      icon: Activity,
+    },
+    high: {
+      className:
+        "prediction-risk-high",
+      icon: TriangleAlert,
+    },
+    critical: {
+      className:
+        "prediction-risk-critical",
+      icon: TriangleAlert,
+    },
+  };
+
+  const presentation =
+    presentations[risk.level] ??
+    presentations.normal;
+
+  return {
+    score: Math.round(
+      clamp(score, 0, 100)
+    ),
+    label: risk.label || "Assessed",
+    description:
+      risk.primary_reason ||
+      "Combined monitoring inputs were assessed.",
+    ...presentation,
+    isNeutral: false,
   };
 }
 
@@ -291,6 +358,9 @@ export default function Prediction() {
   const [yolo, setYolo] =
     useState(null);
 
+  const [combinedRisk, setCombinedRisk] =
+    useState(null);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -371,6 +441,7 @@ export default function Prediction() {
   const loadPredictionData =
     useCallback(async () => {
       if (!selectedStationId) {
+        setCombinedRisk(null);
         return;
       }
 
@@ -382,6 +453,7 @@ export default function Prediction() {
           readingsResult,
           weatherResult,
           yoloResult,
+          riskPayload,
         ] = await Promise.all([
           supabase
             .from("water_levels")
@@ -456,6 +528,28 @@ export default function Prediction() {
             })
             .limit(1)
             .maybeSingle(),
+
+          fetch(
+            `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
+              selectedStationId
+            )}`
+          )
+            .then(async (response) => {
+              if (!response.ok) {
+                throw new Error(
+                  "Combined-risk endpoint is unavailable."
+                );
+              }
+
+              return response.json();
+            })
+            .catch((error) => {
+              console.warn(
+                "Combined risk unavailable:",
+                error
+              );
+              return null;
+            }),
         ]);
 
         const firstError = [
@@ -478,6 +572,11 @@ export default function Prediction() {
 
         setYolo(
           yoloResult.data ?? null
+        );
+
+        setCombinedRisk(
+          riskPayload?.combined_risk ??
+            null
         );
 
         setLastUpdated(
@@ -530,7 +629,11 @@ export default function Prediction() {
       return undefined;
     }
 
-    loadPredictionData();
+    const initialLoad =
+      window.setTimeout(
+        loadPredictionData,
+        0
+      );
 
     const interval =
       window.setInterval(
@@ -538,8 +641,11 @@ export default function Prediction() {
         30000
       );
 
-    return () =>
+    return () => {
+      window.clearTimeout(initialLoad);
+
       window.clearInterval(interval);
+    };
   }, [
     selectedStationId,
     loadPredictionData,
@@ -621,13 +727,9 @@ export default function Prediction() {
   );
 
 
-  const currentPrediction =
-    predictions[0];
-
   const currentRisk =
-    getRiskDetails(
-      currentPrediction
-        ?.riskPercent ?? 0
+    getCombinedRiskDetails(
+      combinedRisk
     );
 
   const RiskIcon = currentRisk.icon;
@@ -679,8 +781,8 @@ export default function Prediction() {
 
   return (
     <DashboardLayout
-      title="Flood Prediction"
-      description="AI-assisted flood risk and water-level forecasting"
+      title="Flood Risk & Projection"
+      description="Current rule-based monitoring risk and prototype water-level projection"
     >
       <main className="prediction-page">
         {errorMessage && (
@@ -698,11 +800,12 @@ export default function Prediction() {
 
             <select
               value={selectedStationId}
-              onChange={(event) =>
+              onChange={(event) => {
+                setCombinedRisk(null);
                 setSelectedStationId(
                   event.target.value
-                )
-              }
+                );
+              }}
             >
               {stations.length === 0 && (
                 <option value="">
@@ -775,7 +878,7 @@ export default function Prediction() {
 
           <div>
             <span className="prediction-eyebrow">
-              Current flood prediction
+              Current rule-based flood risk
             </span>
 
             <h2>
@@ -789,13 +892,22 @@ export default function Prediction() {
 
           <div className="prediction-risk-score">
             <strong>
-              {currentPrediction
-                ?.riskPercent ?? 0}
-              %
+              {currentRisk.isNeutral
+                ? "--"
+                : `${currentRisk.score}/100`}
             </strong>
 
-            <span>Flood risk score</span>
+            <span>
+              {currentRisk.isNeutral
+                ? "Insufficient monitoring data"
+                : "AquaGuard heuristic score"}
+            </span>
           </div>
+
+          <small className="prediction-risk-method">
+            AquaGuard rule-based flood-risk heuristic · monitoring
+            indicator, not a scientifically validated prediction model
+          </small>
         </section>
 
         <section className="prediction-stat-grid">
@@ -883,27 +995,45 @@ export default function Prediction() {
 
             <div>
               <span>
-                YOLO detection risk
+                Camera evidence index
               </span>
 
               <strong>
                 {Math.round(
                   yoloRisk * 100
                 )}
-                %
+                /100
               </strong>
 
               <small>
-                Confidence{" "}
+                YOLO confidence{" "}
                 {Math.round(
                   toNumber(
                     yolo?.confidence
                   ) * 100
                 )}
-                %
+                % · not flood probability
               </small>
             </div>
           </article>
+        </section>
+
+        <section className="prediction-projection-intro">
+          <div>
+            <span className="prediction-eyebrow">
+              Prototype projection
+            </span>
+
+            <h3>
+              Water-level trend scenarios
+            </h3>
+          </div>
+
+          <p>
+            These simple trend-based indicators are separate from the
+            current combined-risk assessment and are not a validated future
+            forecast.
+          </p>
         </section>
 
         <section className="prediction-horizon-grid">
@@ -938,7 +1068,7 @@ export default function Prediction() {
                       {
                         prediction.riskPercent
                       }
-                      %
+                      /100
                     </strong>
                   </header>
 
@@ -955,7 +1085,7 @@ export default function Prediction() {
 
                   <footer>
                     <span>
-                      Predicted status
+                      Prototype status
                     </span>
 
                     <b>
@@ -974,11 +1104,11 @@ export default function Prediction() {
           <header className="prediction-section-header">
             <div>
               <span className="prediction-eyebrow">
-                Water-level forecast
+                Prototype water-level projection
               </span>
 
               <h3>
-                Historical and predicted
+                Historical and projected
                 levels
               </h3>
             </div>
@@ -1139,17 +1269,15 @@ export default function Prediction() {
 
           <div>
             <strong>
-              Prediction information
+              Projection limitations
             </strong>
 
             <p>
-              Forecasts are estimates
-              based on recent water-level
-              trends, rainfall, weather
-              risk, and YOLO flood
-              detection. Emergency
-              decisions should still use
-              verified field observations.
+              These scenarios use a simple client-side trend heuristic based
+              on recent readings, rainfall, and stored monitoring indicators.
+              They do not claim future predictive accuracy. Emergency
+              decisions should use station thresholds and verified field
+              observations.
             </p>
           </div>
         </section>

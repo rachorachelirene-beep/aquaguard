@@ -153,6 +153,21 @@
   text-transform: uppercase;
 }
 
+.prediction-risk-method {
+  grid-column: 1 / -1;
+  padding-top: 13px;
+  border-top: 1px solid currentColor;
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.prediction-risk-neutral {
+  border-color: #cbd5e1;
+  color: #475569;
+  background: #f8fafc;
+}
+
 .prediction-risk-low {
   border-color: #86efac;
   color: #15803d;
@@ -239,6 +254,29 @@
   grid-template-columns:
     repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+.prediction-projection-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 3px 2px 0;
+}
+
+.prediction-projection-intro h3 {
+  margin: 4px 0 0;
+  color: #14213a;
+  font-size: 17px;
+}
+
+.prediction-projection-intro p {
+  max-width: 640px;
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.55;
+  text-align: right;
 }
 
 .prediction-horizon-card {
@@ -415,6 +453,16 @@
     justify-items: start;
     padding-top: 13px;
     border-top: 1px solid currentColor;
+  }
+
+  .prediction-projection-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .prediction-projection-intro p {
+    text-align: left;
   }
 }
 
