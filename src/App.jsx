@@ -38,8 +38,11 @@ import ResponderAffectedAreas from "./pages/responder/ResponderAffectedAreas";
 import ResponderCoordinate from "./pages/responder/ResponderCoordinate";
 import ResponderDashboard from "./pages/responder/ResponderDashboard";
 import ResponderEmergencyAlerts from "./pages/responder/ResponderEmergencyAlerts";
+import ResponderEvacuationAdvisories from "./pages/responder/ResponderEvacuationAdvisories";
+import ResponderLiveMonitoring from "./pages/responder/ResponderLiveMonitoring";
 import ResponderReports from "./pages/responder/ResponderReports";
 import ResponderResponseLogs from "./pages/responder/ResponderResponseLogs";
+import ResponderWaterLevelHistory from "./pages/responder/ResponderWaterLevelHistory";
 import ResidentAlerts from "./pages/resident/ResidentAlerts";
 import ResidentAnnouncements from "./pages/resident/ResidentAnnouncements";
 import ResidentDashboard from "./pages/resident/ResidentDashboard";
@@ -289,6 +292,50 @@ export default function App() {
                 allowedRoles={["disaster_responder"]}
               >
                 <ResponderEmergencyAlerts />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/alerts"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderEmergencyAlerts />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/live-monitoring"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderLiveMonitoring />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/evacuation-advisories"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderEvacuationAdvisories />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/responder/water-level-history"
+            element={
+              <ProtectedRoute
+                allowedRoles={["disaster_responder"]}
+              >
+                <ResponderWaterLevelHistory />
               </ProtectedRoute>
             }
           />

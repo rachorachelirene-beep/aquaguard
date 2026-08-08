@@ -1,43 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { ClipboardPlus, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
-import {
-  formatDateTime,
-  getResponseStatus,
-} from "./responderUtils";
+import { formatDateTime, getResponseStatus } from "./responderUtils";
 
 export default function ResponderCoordinate() {
   const { profile } = useAuth();
+  const responderId = profile?.id ?? "";
   const [logs, setLogs] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [stations, setStations] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [flash, setFlash] = useState(null);
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({
-    id: "",
-    station_id: "",
-    status: "ongoing",
-    notes: "",
-  });
+  const [loadError, setLoadError] = useState("");
 
-  const loadData = useCallback(async () => {
+  const loadCoordination = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+
     try {
-      setLoading(true);
-      setFlash(null);
-
       const [logsResult, announcementsResult, stationsResult, profilesResult] =
         await Promise.all([
           supabase
             .from("response_logs")
-            .select("id, alert_id, station_id, responder_id, status, notes, created_at, updated_at")
+            .select(
+              "id, alert_id, station_id, responder_id, status, notes, created_at, updated_at"
+            )
             .order("updated_at", { ascending: false })
-            .limit(80),
+            .limit(100),
           supabase
             .from("announcements")
             .select("id, title, body, created_at, created_by")
@@ -47,146 +40,114 @@ export default function ResponderCoordinate() {
             .from("stations")
             .select("id, name, location, station_code")
             .order("name", { ascending: true }),
-          supabase
-            .from("profiles")
-            .select("id, name, role"),
+          supabase.from("profiles").select("id, name, role"),
         ]);
 
-      const firstError = [
-        logsResult.error,
-        announcementsResult.error,
-        stationsResult.error,
-        profilesResult.error,
-      ].find(Boolean);
+      const requiredError = [logsResult.error, stationsResult.error].find(Boolean);
 
-      if (firstError) {
-        throw firstError;
+      if (requiredError) {
+        throw requiredError;
+      }
+
+      if (announcementsResult.error) {
+        console.warn(
+          "Responder coordination announcements unavailable:",
+          announcementsResult.error
+        );
+      }
+
+      if (profilesResult.error) {
+        console.warn(
+          "Responder coordination profiles unavailable:",
+          profilesResult.error
+        );
       }
 
       setLogs(logsResult.data ?? []);
-      setAnnouncements(announcementsResult.data ?? []);
       setStations(stationsResult.data ?? []);
-      setProfiles(profilesResult.data ?? []);
+      setAnnouncements(
+        announcementsResult.error ? [] : announcementsResult.data ?? []
+      );
+      setProfiles(profilesResult.error ? [] : profilesResult.data ?? []);
     } catch (error) {
-      console.error("Responder coordinate error:", error);
-      setFlash({
-        type: "error",
-        text: error.message || "Unable to load coordination data.",
-      });
+      console.error("Responder coordination loading error:", error);
+      setLoadError(
+        "Unable to load response coordination. Check your connection and access permissions, then try again."
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    async function boot() {
-      await loadData();
-    }
+    const timeout = window.setTimeout(loadCoordination, 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadCoordination]);
 
-    boot();
-  }, [loadData]);
-
-  const stationMap = useMemo(() => {
-    const map = new Map();
-
-    stations.forEach((station) => map.set(String(station.id), station));
-    return map;
-  }, [stations]);
-
-  const profileMap = useMemo(() => {
-    const map = new Map();
-
-    profiles.forEach((item) => map.set(String(item.id), item));
-    return map;
-  }, [profiles]);
-
-  const myLogs = logs.filter(
-    (log) => String(log.responder_id) === String(profile?.id)
+  const stationMap = useMemo(
+    () => new Map(stations.map((station) => [String(station.id), station])),
+    [stations]
   );
-
-  function openCreateModal() {
-    setForm({
-      id: "",
-      station_id: "",
-      status: "ongoing",
-      notes: "",
-    });
-    setModal("create");
-  }
-
-  function openUpdateModal(log) {
-    setForm({
-      id: String(log.id),
-      station_id: log.station_id ? String(log.station_id) : "",
-      status: log.status ?? "ongoing",
-      notes: log.notes ?? "",
-    });
-    setModal("update");
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setSubmitting(true);
-    setFlash(null);
-
-    const result =
-      modal === "update"
-        ? await supabase
-            .from("response_logs")
-            .update({
-              status: form.status,
-              notes: form.notes.trim(),
-            })
-            .eq("id", form.id)
-        : await supabase.from("response_logs").insert({
-            station_id: form.station_id || null,
-            responder_id: profile?.id ?? null,
-            status: form.status,
-            notes: form.notes.trim(),
-          });
-
-    setSubmitting(false);
-
-    if (result.error) {
-      setFlash({
-        type: "error",
-        text: result.error.message || "Unable to save response log.",
-      });
-      return;
-    }
-
-    setModal(null);
-    setFlash({ type: "success", text: "Response log saved." });
-    await loadData();
-  }
+  const profileMap = useMemo(
+    () => new Map(profiles.map((item) => [String(item.id), item])),
+    [profiles]
+  );
+  const myLogCount = logs.filter(
+    (log) => String(log.responder_id) === String(responderId)
+  ).length;
+  const ongoingCount = logs.filter((log) => log.status === "ongoing").length;
 
   return (
     <DashboardLayout
-      title="Coordinate"
-      description="Responder activity and officer communications."
+      title="Response / Coordination"
+      description="Follow recent field activity and officer communications."
     >
-      {flash && (
-        <div className={`flash ${flash.type}`}>{flash.text}</div>
-      )}
-
       <main className="page-content officer-page">
+        <section className="stat-cards officer-stat-strip">
+          <div className="stat-card warning-card">
+            <div className="stat-label">ONGOING RESPONSES</div>
+            <div className="stat-value orange">{ongoingCount}</div>
+            <div className="stat-sub">VISIBLE TO YOUR ROLE</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">MY ACTIVITY</div>
+            <div className="stat-value blue">{myLogCount}</div>
+            <div className="stat-sub">RECENT LOGS</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">TEAM ACTIVITY</div>
+            <div className="stat-value green">{logs.length}</div>
+            <div className="stat-sub">RECENT VISIBLE ENTRIES</div>
+          </div>
+        </section>
+
         <section className="officer-coordinate-grid">
           <div className="section-card">
             <div className="section-title">
-              <span>All Responder Activity</span>
-              <button
-                className="btn-cancel officer-icon-button"
-                type="button"
-                onClick={loadData}
-                disabled={loading}
-              >
-                <RefreshCw
-                  size={16}
-                  className={loading ? "officer-spin" : ""}
-                />
-                Refresh
-              </button>
+              <span>Recent Response Activity</span>
+              <div className="officer-table-actions">
+                <button
+                  className="btn-cancel officer-icon-button"
+                  type="button"
+                  onClick={loadCoordination}
+                  disabled={loading}
+                >
+                  <RefreshCw
+                    size={16}
+                    className={loading ? "officer-spin" : ""}
+                  />
+                  Refresh
+                </button>
+                <Link
+                  className="btn-submit officer-icon-button"
+                  to="/responder/response-logs"
+                >
+                  <ClipboardPlus size={16} />
+                  Record my response
+                </Link>
+              </div>
             </div>
+
             <div className="data-table-wrap">
               <table className="data-table">
                 <thead>
@@ -194,36 +155,55 @@ export default function ResponderCoordinate() {
                     <th>Responder</th>
                     <th>Station</th>
                     <th>Status</th>
-                    <th>Notes</th>
+                    <th>Field Update</th>
                     <th>Updated</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.length === 0 ? (
+                  {loading ? (
                     <tr>
                       <td colSpan="5" className="officer-table-empty">
-                        No activity yet.
+                        Loading response activity...
+                      </td>
+                    </tr>
+                  ) : loadError ? (
+                    <tr>
+                      <td colSpan="5" className="officer-table-empty error">
+                        {loadError}
+                      </td>
+                    </tr>
+                  ) : logs.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="officer-table-empty">
+                        No response activity is available.
                       </td>
                     </tr>
                   ) : (
                     logs.map((log) => {
+                      const isMine =
+                        String(log.responder_id) === String(responderId);
                       const responder = profileMap.get(String(log.responder_id));
                       const station = stationMap.get(String(log.station_id));
                       const status = getResponseStatus(log.status);
 
                       return (
                         <tr key={log.id}>
-                          <td>{responder?.name ?? "Responder"}</td>
-                          <td>{station?.name ?? "General"}</td>
+                          <td>
+                            {isMine ? "You" : responder?.name ?? "Responder"}{" "}
+                            {isMine && <span className="badge badge-blue">Mine</span>}
+                          </td>
+                          <td>{station?.name ?? "General response"}</td>
                           <td>
                             <span className={`badge ${status.badge}`}>
                               {status.label}
                             </span>
                           </td>
                           <td className="officer-table-message">
-                            {log.notes || "--"}
+                            {log.notes || "No field notes provided."}
                           </td>
-                          <td>{formatDateTime(log.updated_at ?? log.created_at)}</td>
+                          <td>
+                            {formatDateTime(log.updated_at ?? log.created_at)}
+                          </td>
                         </tr>
                       );
                     })
@@ -236,16 +216,15 @@ export default function ResponderCoordinate() {
           <div className="section-card">
             <div className="section-title">Officer Announcements</div>
             <div className="resident-list">
-              {announcements.length === 0 ? (
-                <div className="dashboard-empty">No announcements.</div>
+              {loading ? (
+                <div className="dashboard-empty">Loading announcements...</div>
+              ) : announcements.length === 0 ? (
+                <div className="dashboard-empty">No announcements available.</div>
               ) : (
                 announcements.map((announcement) => (
-                  <article
-                    className="officer-list-item"
-                    key={announcement.id}
-                  >
+                  <article className="officer-list-item" key={announcement.id}>
                     <strong>{announcement.title}</strong>
-                    <span>{announcement.body?.slice(0, 130)}</span>
+                    <span>{announcement.body || "No message provided."}</span>
                     <small>{formatDateTime(announcement.created_at)}</small>
                   </article>
                 ))
@@ -253,149 +232,7 @@ export default function ResponderCoordinate() {
             </div>
           </div>
         </section>
-
-        <section className="section-card">
-          <div className="section-title">
-            <span>Update My Response Status</span>
-            <button
-              className="btn-submit officer-title-action"
-              type="button"
-              onClick={openCreateModal}
-            >
-              <Plus size={16} />
-              New Log
-            </button>
-          </div>
-
-          <div className="resident-list">
-            {myLogs.length === 0 ? (
-              <div className="dashboard-empty">
-                No active responses. Use New Log to start one.
-              </div>
-            ) : (
-              myLogs.slice(0, 6).map((log) => {
-                const station = stationMap.get(String(log.station_id));
-                const status = getResponseStatus(log.status);
-
-                return (
-                  <article className="officer-list-item" key={log.id}>
-                    <div className="officer-list-heading">
-                      <strong>{station?.name ?? "General response"}</strong>
-                      <span className={`badge ${status.badge}`}>
-                        {status.label}
-                      </span>
-                    </div>
-                    <span>{log.notes || "No notes"}</span>
-                    <button
-                      className="btn-submit officer-icon-button responder-inline-button"
-                      type="button"
-                      onClick={() => openUpdateModal(log)}
-                    >
-                      Update
-                    </button>
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </section>
       </main>
-
-      {modal && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <div className="modal-header">
-              <span>{modal === "update" ? "Update Status" : "New Response Log"}</span>
-              <button
-                className="modal-close"
-                type="button"
-                onClick={() => setModal(null)}
-              >
-                x
-              </button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              {modal !== "update" && (
-                <>
-                  <label className="form-label" htmlFor="coordinate-station">
-                    Station
-                  </label>
-                  <select
-                    id="coordinate-station"
-                    className="form-input"
-                    value={form.station_id}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        station_id: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">-- None --</option>
-                    {stations.map((station) => (
-                      <option key={station.id} value={station.id}>
-                        {station.name}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-
-              <label className="form-label" htmlFor="coordinate-status">
-                Status
-              </label>
-              <select
-                id="coordinate-status"
-                className="form-input"
-                value={form.status}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    status: event.target.value,
-                  }))
-                }
-              >
-                <option value="ongoing">On-going Response</option>
-                <option value="rescued">Rescued</option>
-                <option value="cleared">Cleared</option>
-              </select>
-
-              <label className="form-label" htmlFor="coordinate-notes">
-                Notes
-              </label>
-              <textarea
-                id="coordinate-notes"
-                className="form-input"
-                rows="3"
-                value={form.notes}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    notes: event.target.value,
-                  }))
-                }
-              />
-
-              <div className="modal-footer">
-                <button
-                  className="btn-cancel"
-                  type="button"
-                  onClick={() => setModal(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn-submit"
-                  type="submit"
-                  disabled={submitting}
-                >
-                  {submitting ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </DashboardLayout>
   );
 }

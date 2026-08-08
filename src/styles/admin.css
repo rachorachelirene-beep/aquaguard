@@ -1109,7 +1109,8 @@
 
 @media (max-width: 1000px) {
   .officer-monitoring-summary,
-  .officer-quick-grid {
+  .officer-quick-grid,
+  .responder-report-stats {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -1138,6 +1139,15 @@
 .officer-stat-strip {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 0;
+}
+
+.responder-report-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.responder-note-templates {
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 .officer-coordinate-grid {
@@ -1378,6 +1388,7 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
+  text-decoration: none;
 }
 
 .officer-toolbar {

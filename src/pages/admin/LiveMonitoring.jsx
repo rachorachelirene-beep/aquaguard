@@ -52,6 +52,10 @@ function getStoredCameraApiUrl() {
 }
 
 function toNumber(value, fallback = null) {
+  if (value == null || value === "") {
+    return fallback;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -218,7 +222,7 @@ function StreamPlaceholder({ streamState }) {
   );
 }
 
-function LiveMonitoringContent({ routePrefix }) {
+function LiveMonitoringContent({ routePrefix, viewOnly }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedStationId = searchParams.get("station_id");
   const feedRef = useRef(null);
@@ -243,10 +247,10 @@ function LiveMonitoringContent({ routePrefix }) {
   const [sendingAlert, setSendingAlert] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [cameraApiBaseUrl, setCameraApiBaseUrl] = useState(() =>
-    getStoredCameraApiUrl()
+    viewOnly ? defaultCameraApiUrl : getStoredCameraApiUrl()
   );
   const [cameraApiInput, setCameraApiInput] = useState(() =>
-    getStoredCameraApiUrl()
+    viewOnly ? defaultCameraApiUrl : getStoredCameraApiUrl()
   );
 
   const loadMonitoring = useCallback(async () => {
@@ -1060,31 +1064,33 @@ function LiveMonitoringContent({ routePrefix }) {
                         </strong>
                       </div>
                     </div>
-                    <form
-                      className="lm-detector-form"
-                      onSubmit={handleDetectorUrlSubmit}
-                    >
-                      <label htmlFor="detector-url">Detector URL</label>
-                      <div className="lm-detector-controls">
-                        <input
-                          id="detector-url"
-                          type="url"
-                          value={cameraApiInput}
-                          placeholder="https://detector.example.com"
-                          onChange={(event) =>
-                            setCameraApiInput(event.target.value)
-                          }
-                        />
-                        <button type="submit">Save</button>
-                        <button
-                          type="button"
-                          onClick={handleDetectorUrlReset}
-                        >
-                          Reset
-                        </button>
-                      </div>
-                      <span>{cameraApiBaseUrl}</span>
-                    </form>
+                    {!viewOnly && (
+                      <form
+                        className="lm-detector-form"
+                        onSubmit={handleDetectorUrlSubmit}
+                      >
+                        <label htmlFor="detector-url">Detector URL</label>
+                        <div className="lm-detector-controls">
+                          <input
+                            id="detector-url"
+                            type="url"
+                            value={cameraApiInput}
+                            placeholder="https://detector.example.com"
+                            onChange={(event) =>
+                              setCameraApiInput(event.target.value)
+                            }
+                          />
+                          <button type="submit">Save</button>
+                          <button
+                            type="button"
+                            onClick={handleDetectorUrlReset}
+                          >
+                            Reset
+                          </button>
+                        </div>
+                        <span>{cameraApiBaseUrl}</span>
+                      </form>
+                    )}
                   </div>
 
                   <div className="lm-info-card">
@@ -1149,21 +1155,23 @@ function LiveMonitoringContent({ routePrefix }) {
                       <span>Quick Actions</span>
                     </div>
                     <div className="lm-action-list">
-                      <button
-                        className="lm-action-btn lm-action-alert"
-                        type="button"
-                        onClick={handleSendAlert}
-                        disabled={sendingAlert}
-                      >
-                        <Bell size={16} />
-                        {sendingAlert ? "Sending..." : "Send Alert"}
-                      </button>
+                      {!viewOnly && (
+                        <button
+                          className="lm-action-btn lm-action-alert"
+                          type="button"
+                          onClick={handleSendAlert}
+                          disabled={sendingAlert}
+                        >
+                          <Bell size={16} />
+                          {sendingAlert ? "Sending..." : "Send Alert"}
+                        </button>
+                      )}
                       <Link
                         className="lm-action-btn lm-action-report"
                         to={`${routePrefix}/reports`}
                       >
                         <FileText size={16} />
-                        Generate Report
+                        {viewOnly ? "View Reports" : "Generate Report"}
                       </Link>
                       <Link
                         className="lm-action-btn lm-action-history"
@@ -1204,13 +1212,18 @@ function LiveMonitoringContent({ routePrefix }) {
   );
 }
 
-export default function LiveMonitoring({ routePrefix = "/admin" }) {
+export default function LiveMonitoring({
+  routePrefix = "/admin",
+  viewOnly = false,
+  title = "Live Monitoring",
+  description = "Real-time webcam feed with AI waterline detection",
+}) {
   return (
     <DashboardLayout
-      title="Live Monitoring"
-      description="Real-time webcam feed with AI waterline detection"
+      title={title}
+      description={description}
     >
-      <LiveMonitoringContent routePrefix={routePrefix} />
+      <LiveMonitoringContent routePrefix={routePrefix} viewOnly={viewOnly} />
     </DashboardLayout>
   );
 }

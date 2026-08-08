@@ -74,26 +74,31 @@ const roleMenus = {
   disaster_responder: [
     { label: "Dashboard", to: "/responder/dashboard", icon: LayoutDashboard },
     {
-      label: "Emergency Alerts",
-      to: "/responder/emergency-alerts",
+      label: "Live Monitoring",
+      to: "/responder/live-monitoring",
+      icon: RadioTower,
+    },
+    {
+      label: "Alerts",
+      to: "/responder/alerts",
       icon: Bell,
     },
     {
-      label: "Affected Areas",
-      to: "/responder/affected-areas",
-      icon: MapPinned,
+      label: "Evacuation Advisories",
+      to: "/responder/evacuation-advisories",
+      icon: ShieldAlert,
     },
     {
-      label: "Response Logs",
-      to: "/responder/response-logs",
+      label: "Response / Coordination",
+      to: "/responder/coordinate",
       icon: ClipboardList,
     },
     {
-      label: "Emergency Reports",
-      to: "/responder/reports",
-      icon: FileText,
+      label: "Water Level History",
+      to: "/responder/water-level-history",
+      icon: History,
     },
-    { label: "Coordinate", to: "/responder/coordinate", icon: MapPinned },
+    { label: "Reports", to: "/responder/reports", icon: FileText },
   ],
   resident: [
     { label: "Flood Status", to: "/resident/dashboard", icon: Gauge },

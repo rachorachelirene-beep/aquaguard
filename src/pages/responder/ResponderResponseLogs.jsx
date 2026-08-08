@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Plus, RefreshCw, Search, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -12,16 +13,17 @@ import {
 export default function ResponderResponseLogs() {
   const { profile } = useAuth();
   const responderId = profile?.id ?? "";
+  const [searchParams] = useSearchParams();
   const [logs, setLogs] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [modal, setModal] = useState(null);
-  const [logToDelete, setLogToDelete] = useState(null);
   const [form, setForm] = useState({
     id: "",
     alert_id: "",
@@ -33,7 +35,7 @@ export default function ResponderResponseLogs() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      setFlash(null);
+      setLoadError("");
 
       const [logsResult, alertsResult, stationsResult] = await Promise.all([
         supabase
@@ -68,21 +70,17 @@ export default function ResponderResponseLogs() {
       setStations(stationsResult.data ?? []);
     } catch (error) {
       console.error("Responder response logs error:", error);
-      setFlash({
-        type: "error",
-        text: error.message || "Unable to load response logs.",
-      });
+      setLoadError(
+        "Unable to load response logs. Check your connection and access permissions, then try again."
+      );
     } finally {
       setLoading(false);
     }
   }, [responderId]);
 
   useEffect(() => {
-    async function boot() {
-      await loadData();
-    }
-
-    boot();
+    const timeout = window.setTimeout(loadData, 0);
+    return () => window.clearTimeout(timeout);
   }, [loadData]);
 
   const stationMap = useMemo(() => {
@@ -134,8 +132,8 @@ export default function ResponderResponseLogs() {
   function openCreateModal() {
     setForm({
       id: "",
-      alert_id: "",
-      station_id: "",
+      alert_id: searchParams.get("alert_id") ?? "",
+      station_id: searchParams.get("station_id") ?? "",
       status: "ongoing",
       notes: "",
     });
@@ -155,15 +153,35 @@ export default function ResponderResponseLogs() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+
+    if (!responderId) {
+      setFlash({
+        type: "error",
+        text: "Your responder profile is unavailable. Sign in again before saving.",
+      });
+      return;
+    }
+
+    const allowedStatuses = ["ongoing", "rescued", "cleared"];
+    const notes = form.notes.trim();
+
+    if (!allowedStatuses.includes(form.status) || notes.length < 5) {
+      setFlash({
+        type: "error",
+        text: "Choose a valid response status and enter at least 5 characters of field notes.",
+      });
+      return;
+    }
+
     setSubmitting(true);
     setFlash(null);
 
     const payload = {
       alert_id: form.alert_id || null,
       station_id: form.station_id || null,
-      responder_id: profile?.id ?? null,
+      responder_id: responderId,
       status: form.status,
-      notes: form.notes.trim(),
+      notes,
     };
 
     const result =
@@ -175,6 +193,7 @@ export default function ResponderResponseLogs() {
               notes: payload.notes,
             })
             .eq("id", form.id)
+            .eq("responder_id", responderId)
         : await supabase.from("response_logs").insert(payload);
 
     setSubmitting(false);
@@ -188,6 +207,7 @@ export default function ResponderResponseLogs() {
     }
 
     setModal(null);
+    await loadData();
     setFlash({
       type: "success",
       text:
@@ -195,35 +215,6 @@ export default function ResponderResponseLogs() {
           ? "Response status updated."
           : "Response log created.",
     });
-    await loadData();
-  }
-
-  async function deleteLog() {
-    if (!logToDelete) {
-      return;
-    }
-
-    setSubmitting(true);
-    setFlash(null);
-
-    const { error } = await supabase
-      .from("response_logs")
-      .delete()
-      .eq("id", logToDelete.id);
-
-    setSubmitting(false);
-
-    if (error) {
-      setFlash({
-        type: "error",
-        text: error.message || "Unable to delete response log.",
-      });
-      return;
-    }
-
-    setLogs((current) => current.filter((log) => log.id !== logToDelete.id));
-    setLogToDelete(null);
-    setFlash({ type: "success", text: "Response log deleted." });
   }
 
   const hasFilters = searchText || statusFilter !== "all";
@@ -322,6 +313,19 @@ export default function ResponderResponseLogs() {
                       Loading response logs...
                     </td>
                   </tr>
+                ) : loadError ? (
+                  <tr>
+                    <td colSpan="6" className="officer-table-empty error">
+                      {loadError}{" "}
+                      <button
+                        className="btn-submit officer-icon-button"
+                        type="button"
+                        onClick={loadData}
+                      >
+                        Try again
+                      </button>
+                    </td>
+                  </tr>
                 ) : filteredLogs.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="officer-table-empty">
@@ -355,14 +359,6 @@ export default function ResponderResponseLogs() {
                               onClick={() => openUpdateModal(log)}
                             >
                               Update
-                            </button>
-                            <button
-                              className="btn-danger officer-icon-button"
-                              type="button"
-                              onClick={() => setLogToDelete(log)}
-                            >
-                              <Trash2 size={15} />
-                              Delete
                             </button>
                           </div>
                         </td>
@@ -473,7 +469,7 @@ export default function ResponderResponseLogs() {
               <textarea
                 id="log-notes"
                 className="form-input"
-                rows="3"
+                rows="4"
                 value={form.notes}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -481,7 +477,38 @@ export default function ResponderResponseLogs() {
                     notes: event.target.value,
                   }))
                 }
+                required
+                minLength="5"
+                maxLength="2000"
+                placeholder="Describe the field situation and action taken..."
               />
+
+              <div className="officer-table-actions responder-note-templates">
+                {[
+                  "Responding to flooded area",
+                  "Evacuation assistance",
+                  "Rescue coordination",
+                  "Road/area assessment",
+                  "Relief support",
+                  "Situation update",
+                ].map((template) => (
+                  <button
+                    className="btn-cancel officer-icon-button"
+                    type="button"
+                    key={template}
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        notes: current.notes
+                          ? `${current.notes}\n${template}: `
+                          : `${template}: `,
+                      }))
+                    }
+                  >
+                    {template}
+                  </button>
+                ))}
+              </div>
 
               <div className="modal-footer">
                 <button
@@ -504,42 +531,6 @@ export default function ResponderResponseLogs() {
         </div>
       )}
 
-      {logToDelete && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <div className="modal-header">
-              <span>Delete Response Log</span>
-              <button
-                className="modal-close"
-                type="button"
-                onClick={() => setLogToDelete(null)}
-              >
-                x
-              </button>
-            </div>
-            <div className="officer-confirm-body">
-              <p>Delete this response log?</p>
-              <div className="modal-footer">
-                <button
-                  className="btn-cancel"
-                  type="button"
-                  onClick={() => setLogToDelete(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn-danger"
-                  type="button"
-                  onClick={deleteLog}
-                  disabled={submitting}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </DashboardLayout>
   );
 }

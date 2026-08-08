@@ -179,7 +179,7 @@ export default function Navbar({
               : profile?.role === "barangay_officer"
                 ? "/officer/alerts"
               : profile?.role === "disaster_responder"
-                ? "/responder/emergency-alerts"
+                ? "/responder/alerts"
                 : "/resident/alerts"
           }
           className="icon-btn notif-btn"

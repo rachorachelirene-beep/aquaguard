@@ -9,8 +9,16 @@ import {
   formatDateTime,
   getResponseStatus,
   getWaterStatus,
-  toNumber,
 } from "./responderUtils";
+
+function numberOrNull(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 export default function ResponderReports() {
   const { profile } = useAuth();
@@ -19,6 +27,7 @@ export default function ResponderReports() {
   const [readings, setReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [advisories, setAdvisories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState(null);
 
@@ -27,8 +36,13 @@ export default function ResponderReports() {
       setLoading(true);
       setFlash(null);
 
-      const [stationsResult, readingsResult, alertsResult, logsResult] =
-        await Promise.all([
+      const [
+        stationsResult,
+        readingsResult,
+        alertsResult,
+        logsResult,
+        advisoriesResult,
+      ] = await Promise.all([
           supabase
             .from("stations")
             .select("id, name, location, station_code, warning_level, critical_level")
@@ -50,6 +64,13 @@ export default function ResponderReports() {
             .eq("responder_id", responderId)
             .order("updated_at", { ascending: false })
             .limit(500),
+          supabase
+            .from("evacuation_advisories")
+            .select(
+              "id, title, area, level, details, is_active, issued_by, created_at"
+            )
+            .order("created_at", { ascending: false })
+            .limit(200),
         ]);
 
       const firstError = [
@@ -57,6 +78,7 @@ export default function ResponderReports() {
         readingsResult.error,
         alertsResult.error,
         logsResult.error,
+        advisoriesResult.error,
       ].find(Boolean);
 
       if (firstError) {
@@ -67,6 +89,7 @@ export default function ResponderReports() {
       setReadings(readingsResult.data ?? []);
       setAlerts(alertsResult.data ?? []);
       setLogs(logsResult.data ?? []);
+      setAdvisories(advisoriesResult.data ?? []);
     } catch (error) {
       console.error("Responder reports error:", error);
       setFlash({
@@ -79,11 +102,8 @@ export default function ResponderReports() {
   }, [responderId]);
 
   useEffect(() => {
-    async function boot() {
-      await loadReports();
-    }
-
-    boot();
+    const timeout = window.setTimeout(loadReports, 0);
+    return () => window.clearTimeout(timeout);
   }, [loadReports]);
 
   const stationMap = useMemo(() => {
@@ -118,6 +138,9 @@ export default function ResponderReports() {
   }, [stations, readings]);
 
   const activeEmergencies = alerts.filter((alert) => !alert.is_resolved).length;
+  const activeAdvisories = advisories.filter(
+    (advisory) => advisory.is_active
+  ).length;
   const cleared = logs.filter((log) => log.status === "cleared").length;
 
   function exportLevels() {
@@ -126,14 +149,16 @@ export default function ResponderReports() {
       [
         ["Station", "Level (m)", "Rainfall (mm)", "Last Reading", "Status"],
         ...latestRows.map((row) => {
-          const status = row.reading
-            ? getWaterStatus(row.reading.level_m, row.station)
+          const level = numberOrNull(row.reading?.level_m);
+          const rainfall = numberOrNull(row.reading?.rainfall_mm);
+          const status = level != null
+            ? getWaterStatus(level, row.station)
             : { label: "No data" };
 
           return [
             row.station.name,
-            row.reading ? toNumber(row.reading.level_m).toFixed(2) : "",
-            row.reading ? toNumber(row.reading.rainfall_mm).toFixed(1) : "",
+            level == null ? "" : level.toFixed(2),
+            rainfall == null ? "" : rainfall.toFixed(1),
             row.reading ? formatDateTime(row.reading.recorded_at) : "",
             status.label,
           ];
@@ -166,29 +191,34 @@ export default function ResponderReports() {
 
   return (
     <DashboardLayout
-      title="Emergency Reports"
-      description="Water-level data and response history."
+      title="Operational Reports"
+      description="Read-only water-level, alert, advisory, and response summaries."
     >
       {flash && (
         <div className={`flash ${flash.type}`}>{flash.text}</div>
       )}
 
       <main className="page-content officer-page">
-        <section className="stat-cards officer-stat-strip">
+        <section className="stat-cards officer-stat-strip responder-report-stats">
           <div className="stat-card warning-card">
             <div className="stat-label">ACTIVE EMERGENCIES</div>
             <div className="stat-value red">{activeEmergencies}</div>
             <div className="stat-sub">CRITICAL/WARNING</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">MY RESPONSES</div>
-            <div className="stat-value blue">{logs.length}</div>
-            <div className="stat-sub">TOTAL LOGS</div>
+            <div className="stat-label">ACTIVE ADVISORIES</div>
+            <div className="stat-value orange">{activeAdvisories}</div>
+            <div className="stat-sub">EVACUATION GUIDANCE</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">CLEARED</div>
-            <div className="stat-value green">{cleared}</div>
-            <div className="stat-sub">COMPLETED RESPONSES</div>
+            <div className="stat-label">MY RESPONSES</div>
+            <div className="stat-value blue">{logs.length}</div>
+            <div className="stat-sub">{cleared} CLEARED</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">MONITORED STATIONS</div>
+            <div className="stat-value green">{stations.length}</div>
+            <div className="stat-sub">CURRENT SUMMARY</div>
           </div>
         </section>
 
@@ -228,16 +258,32 @@ export default function ResponderReports() {
                 </tr>
               </thead>
               <tbody>
-                {latestRows.map((row) => {
-                  const status = row.reading
-                    ? getWaterStatus(row.reading.level_m, row.station)
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" className="officer-table-empty">
+                      Loading water-level summary...
+                    </td>
+                  </tr>
+                ) : latestRows.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="officer-table-empty">
+                      No monitoring stations or water-level readings available.
+                    </td>
+                  </tr>
+                ) : latestRows.map((row) => {
+                  const level = numberOrNull(row.reading?.level_m);
+                  const rainfall = numberOrNull(row.reading?.rainfall_mm);
+                  const status = level != null
+                    ? getWaterStatus(level, row.station)
                     : { label: "No data", badge: "badge-gray" };
 
                   return (
                     <tr key={row.station.id}>
                       <td>{row.station.name}</td>
-                      <td>{row.reading ? `${toNumber(row.reading.level_m).toFixed(2)} m` : "--"}</td>
-                      <td>{row.reading ? `${toNumber(row.reading.rainfall_mm).toFixed(1)} mm` : "--"}</td>
+                      <td>{level == null ? "--" : `${level.toFixed(2)} m`}</td>
+                      <td>
+                        {rainfall == null ? "--" : `${rainfall.toFixed(1)} mm`}
+                      </td>
                       <td>{formatDateTime(row.reading?.recorded_at)}</td>
                       <td>
                         <span className={`badge ${status.badge}`}>
@@ -249,6 +295,44 @@ export default function ResponderReports() {
                 })}
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section className="section-card">
+          <div className="section-title">
+            <span>Recent Evacuation Advisories</span>
+            <span className="badge badge-orange">
+              {activeAdvisories} active
+            </span>
+          </div>
+          <div className="resident-list">
+            {loading ? (
+              <div className="dashboard-empty">Loading advisories...</div>
+            ) : advisories.length === 0 ? (
+              <div className="dashboard-empty">
+                No evacuation advisories available.
+              </div>
+            ) : (
+              advisories.slice(0, 8).map((advisory) => (
+                <article className="officer-list-item" key={advisory.id}>
+                  <div className="officer-list-heading">
+                    <strong>{advisory.title}</strong>
+                    <span
+                      className={`badge ${
+                        advisory.is_active ? "badge-green" : "badge-gray"
+                      }`}
+                    >
+                      {advisory.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  <span>{advisory.area || "Area not specified"}</span>
+                  <small>
+                    {advisory.level ?? "advisory"} ·{" "}
+                    {formatDateTime(advisory.created_at)}
+                  </small>
+                </article>
+              ))
+            )}
           </div>
         </section>
 
@@ -278,7 +362,13 @@ export default function ResponderReports() {
                 </tr>
               </thead>
               <tbody>
-                {logs.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" className="officer-table-empty">
+                      Loading response history...
+                    </td>
+                  </tr>
+                ) : logs.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="officer-table-empty">
                       No response logs yet.

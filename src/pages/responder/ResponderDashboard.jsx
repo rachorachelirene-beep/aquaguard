@@ -1,18 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Bell,
+  ClipboardList,
+  FileText,
+  History,
+  RadioTower,
+  ShieldAlert,
+} from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import {
   formatDateTime,
-  getAlertBadge,
   getResponseStatus,
   getWaterStatus,
-  toNumber,
 } from "./responderUtils";
 
-function buildLatestReadings(stations, readings) {
+const cameraApiBaseUrl = (
+  import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000"
+).replace(/\/+$/, "");
+
+function numberOrNull(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildStationRows(stations, readings) {
   const latestByStation = new Map();
 
   readings.forEach((reading) => {
@@ -25,12 +44,13 @@ function buildLatestReadings(stations, readings) {
 
   return stations.map((station) => {
     const reading = latestByStation.get(String(station.id)) ?? null;
+    const level = numberOrNull(reading?.level_m);
 
     return {
       station,
       reading,
-      status: reading
-        ? getWaterStatus(reading.level_m, station)
+      status: level != null
+        ? getWaterStatus(level, station)
         : {
             key: "unknown",
             label: "No data",
@@ -41,6 +61,20 @@ function buildLatestReadings(stations, readings) {
   });
 }
 
+function QuickAction({ to, icon: Icon, title, description }) {
+  return (
+    <Link className="officer-quick-card" to={to}>
+      <span className="officer-quick-icon">
+        <Icon size={21} />
+      </span>
+      <span>
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+    </Link>
+  );
+}
+
 export default function ResponderDashboard() {
   const { profile } = useAuth();
   const responderId = profile?.id ?? "";
@@ -49,19 +83,27 @@ export default function ResponderDashboard() {
   const [stations, setStations] = useState([]);
   const [readings, setReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [advisories, setAdvisories] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [weather, setWeather] = useState(null);
+  const [latestDetection, setLatestDetection] = useState(null);
+  const [combinedRisk, setCombinedRisk] = useState(null);
+  const [riskUnavailable, setRiskUnavailable] = useState(false);
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
+
+    setLoadError("");
+
     try {
-      setLoadError("");
-
       const [
         stationsResult,
         readingsResult,
         alertsResult,
+        advisoriesResult,
         logsResult,
-        weatherResult,
+        detectionsResult,
       ] = await Promise.all([
         supabase
           .from("stations")
@@ -76,21 +118,34 @@ export default function ResponderDashboard() {
           .limit(500),
         supabase
           .from("alerts")
-          .select("id, station_id, type, title, message, is_resolved, created_at")
+          .select(
+            "id, station_id, type, title, message, is_read, is_resolved, created_at"
+          )
           .eq("is_resolved", false)
-          .in("type", ["critical", "warning"])
+          .in("type", ["warning", "critical"])
           .order("created_at", { ascending: false })
           .limit(20),
         supabase
+          .from("evacuation_advisories")
+          .select(
+            "id, title, area, level, details, is_active, issued_by, created_at"
+          )
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase
           .from("response_logs")
-          .select("id, alert_id, station_id, responder_id, status, notes, created_at, updated_at")
-          .eq("responder_id", responderId)
+          .select(
+            "id, alert_id, station_id, responder_id, status, notes, created_at, updated_at"
+          )
           .order("updated_at", { ascending: false })
           .limit(20),
         supabase
-          .from("weather_readings")
-          .select("temperature, precipitation, condition_text, flood_risk, recorded_at")
-          .order("recorded_at", { ascending: false })
+          .from("yolo_detections")
+          .select(
+            "id, station_id, level_m, confidence, water_coverage, detected_at"
+          )
+          .order("detected_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
       ]);
@@ -99,72 +154,125 @@ export default function ResponderDashboard() {
         stationsResult.error,
         readingsResult.error,
         alertsResult.error,
+        advisoriesResult.error,
         logsResult.error,
-        weatherResult.error,
+        detectionsResult.error,
       ].find(Boolean);
 
       if (firstError) {
         throw firstError;
       }
 
-      setStations(stationsResult.data ?? []);
-      setReadings(readingsResult.data ?? []);
+      const nextStations = stationsResult.data ?? [];
+      const nextReadings = readingsResult.data ?? [];
+      const primaryStationId =
+        nextReadings[0]?.station_id ?? nextStations[0]?.id ?? null;
+      let nextRisk = null;
+      let nextRiskUnavailable = false;
+
+      if (primaryStationId != null) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+        try {
+          const response = await fetch(
+            `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
+              primaryStationId
+            )}`,
+            { signal: controller.signal }
+          );
+
+          if (!response.ok) {
+            throw new Error("Combined-risk endpoint returned an error.");
+          }
+
+          const payload = await response.json();
+          nextRisk = payload?.combined_risk ?? null;
+        } catch (error) {
+          console.warn("Responder dashboard combined risk unavailable:", error);
+          nextRiskUnavailable = true;
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+
+      setStations(nextStations);
+      setReadings(nextReadings);
       setAlerts(alertsResult.data ?? []);
+      setAdvisories(advisoriesResult.data ?? []);
       setLogs(logsResult.data ?? []);
-      setWeather(weatherResult.data ?? null);
+      setLatestDetection(detectionsResult.data ?? null);
+      setCombinedRisk(nextRisk);
+      setRiskUnavailable(nextRiskUnavailable);
     } catch (error) {
-      console.error("Responder dashboard error:", error);
-      setLoadError(error.message || "Unable to load responder dashboard.");
+      console.error("Responder dashboard loading error:", error);
+      setLoadError(
+        "Unable to load the responder dashboard. Check your connection and access permissions, then try again."
+      );
     } finally {
       setLoading(false);
     }
-  }, [responderId]);
+  }, []);
 
   useEffect(() => {
-    let active = true;
-
-    async function boot({ initial = false } = {}) {
-      if (initial) {
-        setLoading(true);
-      }
-
-      await loadDashboard();
-
-      if (!active) {
-        return;
-      }
-    }
-
-    boot({ initial: true });
-    const interval = window.setInterval(() => boot(), 30000);
+    const initialLoad = window.setTimeout(() => loadDashboard(), 0);
+    const interval = window.setInterval(
+      () => loadDashboard({ showLoading: false }),
+      30000
+    );
 
     return () => {
-      active = false;
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
     };
   }, [loadDashboard]);
 
-  const stationCards = useMemo(
-    () => buildLatestReadings(stations, readings),
-    [stations, readings]
+  const stationRows = useMemo(
+    () => buildStationRows(stations, readings),
+    [readings, stations]
   );
-  const primary = stationCards.find((item) => item.reading) ?? stationCards[0];
-  const currentLevel = toNumber(primary?.reading?.level_m);
-  const primaryStatus = primary?.reading
-    ? getWaterStatus(currentLevel, primary.station)
-    : { label: "No data", className: "gray", badge: "badge-gray" };
-  const criticalStations = stationCards.filter(
-    (item) => item.status.key === "critical"
-  ).length;
-  const warningStations = stationCards.filter(
-    (item) => item.status.key === "warning"
-  ).length;
-  const clearedLogs = logs.filter((log) => log.status === "cleared").length;
+  const latestReading = readings[0] ?? null;
+  const primary =
+    stationRows.find(
+      (item) => String(item.station.id) === String(latestReading?.station_id)
+    ) ?? stationRows[0] ?? null;
+  const currentLevel = numberOrNull(primary?.reading?.level_m);
+  const waterStatus = primary?.reading
+    ? primary.status
+    : {
+        key: "unknown",
+        label: "No data",
+        className: "gray",
+        badge: "badge-gray",
+      };
+  const riskScore =
+    combinedRisk?.assessed === true ? numberOrNull(combinedRisk.score) : null;
+  const riskLabel =
+    riskScore == null ? "Not assessed" : combinedRisk?.label ?? "Assessed";
+  const riskTone =
+    combinedRisk?.level === "critical"
+      ? "red"
+      : combinedRisk?.level === "high" || combinedRisk?.level === "elevated"
+        ? "orange"
+        : riskScore == null
+          ? "gray"
+          : "green";
+  const latestAlert = alerts[0] ?? null;
+  const activeAdvisory = advisories[0] ?? null;
+  const latestResponse = logs[0] ?? null;
+  const responseStatus = getResponseStatus(latestResponse?.status);
+  const responseIsMine =
+    latestResponse &&
+    String(latestResponse.responder_id) === String(responderId);
+  const stationMap = useMemo(
+    () => new Map(stations.map((station) => [String(station.id), station])),
+    [stations]
+  );
 
   return (
     <DashboardLayout
       title="Responder Dashboard"
-      description="Emergency alerts, affected areas, and response coordination."
+      description="Live flood conditions, emergency guidance, and field response activity."
     >
       {loading && (
         <div className="page-content">
@@ -177,7 +285,10 @@ export default function ResponderDashboard() {
       {!loading && loadError && (
         <div className="page-content">
           <div className="section-card dashboard-empty error">
-            {loadError}
+            <strong>{loadError}</strong>
+            <button className="btn-submit" type="button" onClick={loadDashboard}>
+              Try again
+            </button>
           </div>
         </div>
       )}
@@ -185,165 +296,212 @@ export default function ResponderDashboard() {
       {!loading && !loadError && (
         <main className="page-content officer-page">
           <section className="stat-cards dashboard-secondary-cards">
-            <div className="stat-card warning-card">
-              <div className="stat-header">
-                <span className="stat-label">FLOOD STATUS</span>
-                <span className={`stat-icon ${primaryStatus.className}`}>!</span>
-              </div>
-              <div className={`stat-value ${primaryStatus.className} big`}>
-                {primaryStatus.label}
-              </div>
-              <div className="stat-sub">{primary?.station?.name ?? "No station"}</div>
-            </div>
-
             <div className="stat-card">
-              <div className="stat-header">
-                <span className="stat-label">CURRENT LEVEL</span>
-                <span className="stat-icon blue">~</span>
-              </div>
+              <div className="stat-label">CURRENT WATER LEVEL</div>
               <div className="stat-value blue">
-                {primary?.reading ? `${currentLevel.toFixed(2)} m` : "No data"}
+                {currentLevel == null ? "No data" : `${currentLevel.toFixed(2)} m`}
               </div>
               <div className="stat-sub">
-                Updated {formatDateTime(primary?.reading?.recorded_at)}
+                {primary?.station?.name ?? "No station reading available"}
+              </div>
+            </div>
+
+            <div className="stat-card warning-card">
+              <div className="stat-label">LATEST STATION STATUS</div>
+              <div className={`stat-value ${waterStatus.className} big`}>
+                {waterStatus.label}
+              </div>
+              <div className="stat-sub">
+                {primary?.station?.location ?? "Station location unavailable"}
               </div>
             </div>
 
             <div className="stat-card">
-              <div className="stat-header">
-                <span className="stat-label">EMERGENCY ALERTS</span>
-                <span className="stat-icon red">!</span>
+              <div className="stat-label">COMBINED FLOOD RISK</div>
+              <div className={`stat-value ${riskTone}`}>
+                {riskScore == null ? "--" : `${Math.round(riskScore)}/100`}
               </div>
-              <div className="stat-value red">{alerts.length}</div>
-              <div className="stat-sub">REQUIRE RESPONSE</div>
+              <div className="stat-sub">
+                {riskLabel} · Rule-based monitoring assessment
+              </div>
             </div>
 
             <div className="stat-card weather-card">
-              <div className="stat-header">
-                <span className="stat-label">WEATHER</span>
-                <span className="stat-icon blue">~</span>
-              </div>
+              <div className="stat-label">LATEST DETECTION</div>
               <div className="stat-value compact">
-                {weather?.condition_text ?? "No data"}
+                {formatDateTime(latestDetection?.detected_at)}
               </div>
               <div className="stat-sub">
-                {weather?.temperature ?? "--"}C | Risk{" "}
-                {Math.round(toNumber(weather?.flood_risk) * 100)}%
+                {latestDetection
+                  ? `AI confidence ${
+                      numberOrNull(latestDetection.confidence) == null
+                        ? "--"
+                        : `${Math.round(
+                            numberOrNull(latestDetection.confidence) <= 1
+                              ? numberOrNull(latestDetection.confidence) * 100
+                              : numberOrNull(latestDetection.confidence)
+                          )}%`
+                    }`
+                  : "No detection available"}
               </div>
             </div>
+          </section>
+
+          <section className="officer-monitoring-summary">
+            <article className="officer-summary-card">
+              <span>Monitoring station</span>
+              <strong>{primary?.station?.name ?? "No station selected"}</strong>
+              <small>
+                {primary?.station?.location ?? "Location unavailable"} ·{" "}
+                {primary?.station?.station_code ?? "No station code"}
+              </small>
+              <small>
+                Station connection: {primary?.station?.status ?? "unknown"} ·
+                Reading updated {formatDateTime(primary?.reading?.recorded_at)}
+              </small>
+            </article>
+
+            <article className="officer-summary-card officer-summary-alert">
+              <span>Latest warning / critical alert</span>
+              <strong>{latestAlert?.title ?? "No active alerts"}</strong>
+              <small>
+                {latestAlert?.message ??
+                  "There are no unresolved warning or critical alerts."}
+              </small>
+              {latestAlert && (
+                <small>
+                  {stationMap.get(String(latestAlert.station_id))?.name ??
+                    "General alert"}{" "}
+                  · {formatDateTime(latestAlert.created_at)}
+                </small>
+              )}
+            </article>
+
+            <article className="officer-summary-card">
+              <span>Combined flood risk detail</span>
+              <strong>{riskLabel}</strong>
+              <small>
+                {combinedRisk?.primary_reason ??
+                  (riskUnavailable
+                    ? "Detector risk service is offline or unreachable."
+                    : "Insufficient monitoring data for an assessment.")}
+              </small>
+              <small>Monitoring score, not flood probability.</small>
+            </article>
           </section>
 
           <section className="resident-dashboard-grid">
             <div className="section-card">
               <div className="section-title">
-                <span>Affected Areas</span>
-                <span className="badge badge-red">
-                  {criticalStations} critical
-                </span>
+                <span>Active Evacuation Advisory</span>
+                <Link
+                  className="resident-view-link"
+                  to="/responder/evacuation-advisories"
+                >
+                  View all
+                </Link>
               </div>
-              <div className="resident-station-grid responder-dashboard-stations">
-                {stationCards.slice(0, 6).map((item) => (
-                  <article
-                    className="lm-station-card resident-station-card"
-                    key={item.station.id}
-                  >
-                    <div className="lm-station-top">
-                      <div className="lm-station-name">{item.station.name}</div>
-                      <span className={`lm-dot ${item.status.className}`} />
-                    </div>
-                    <strong className={`stat-value ${item.status.className}`}>
-                      {item.reading
-                        ? `${toNumber(item.reading.level_m).toFixed(2)} m`
-                        : "No data"}
-                    </strong>
-                    <span>{item.station.location}</span>
-                    <span className={`badge ${item.status.badge}`}>
-                      {item.status.label}
+              {activeAdvisory ? (
+                <article className="officer-list-item resident-advisory-item">
+                  <div className="officer-list-heading">
+                    <strong>{activeAdvisory.title}</strong>
+                    <span
+                      className={`badge ${
+                        activeAdvisory.level === "mandatory"
+                          ? "badge-red"
+                          : activeAdvisory.level === "warning"
+                            ? "badge-orange"
+                            : "badge-blue"
+                      }`}
+                    >
+                      {activeAdvisory.level ?? "Advisory"}
                     </span>
-                  </article>
-                ))}
-              </div>
-              <Link className="resident-view-link" to="/responder/affected-areas">
-                View all affected areas ({warningStations} warning)
-              </Link>
+                  </div>
+                  <span>Affected area: {activeAdvisory.area || "Not specified"}</span>
+                  <p>{activeAdvisory.details || "No instructions provided."}</p>
+                  <small>{formatDateTime(activeAdvisory.created_at)}</small>
+                </article>
+              ) : (
+                <div className="dashboard-empty">
+                  No active evacuation advisories.
+                </div>
+              )}
             </div>
 
             <div className="section-card">
               <div className="section-title">
-                <span>Emergency Alerts</span>
-                <Link className="resident-view-link" to="/responder/emergency-alerts">
-                  Open alerts
+                <span>Latest Response Activity</span>
+                <Link className="resident-view-link" to="/responder/coordinate">
+                  Coordinate
                 </Link>
               </div>
-              <div className="resident-list">
-                {alerts.length === 0 ? (
-                  <div className="dashboard-empty">
-                    No active critical or warning alerts.
+              {latestResponse ? (
+                <article className="officer-list-item">
+                  <div className="officer-list-heading">
+                    <strong>{responseIsMine ? "Your response" : "Team response"}</strong>
+                    <span className={`badge ${responseStatus.badge}`}>
+                      {responseStatus.label}
+                    </span>
                   </div>
-                ) : (
-                  alerts.slice(0, 6).map((alert) => (
-                    <article className="officer-list-item" key={alert.id}>
-                      <div className="officer-list-heading">
-                        <strong>{alert.title}</strong>
-                        <span className={`badge ${getAlertBadge(alert.type)}`}>
-                          {alert.type}
-                        </span>
-                      </div>
-                      <span>{alert.message?.slice(0, 120)}</span>
-                      <small>{formatDateTime(alert.created_at)}</small>
-                    </article>
-                  ))
-                )}
-              </div>
+                  <span>{latestResponse.notes || "No field notes provided."}</span>
+                  <small>
+                    {stationMap.get(String(latestResponse.station_id))?.name ??
+                      "General response"}{" "}
+                    ·{" "}
+                    {formatDateTime(
+                      latestResponse.updated_at ?? latestResponse.created_at
+                    )}
+                  </small>
+                </article>
+              ) : (
+                <div className="dashboard-empty">No response activity yet.</div>
+              )}
             </div>
           </section>
 
           <section className="section-card">
             <div className="section-title">
-              <span>My Response Logs</span>
-              <span className="badge badge-green">{clearedLogs} cleared</span>
+              <span>Quick Actions</span>
+              <small>Responder monitoring and field tools</small>
             </div>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Updated</th>
-                    <th>Status</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.length === 0 ? (
-                    <tr>
-                      <td colSpan="3" className="officer-table-empty">
-                        No response logs yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    logs.slice(0, 8).map((log) => {
-                      const status = getResponseStatus(log.status);
-
-                      return (
-                        <tr key={log.id}>
-                          <td>{formatDateTime(log.updated_at ?? log.created_at)}</td>
-                          <td>
-                            <span className={`badge ${status.badge}`}>
-                              {status.label}
-                            </span>
-                          </td>
-                          <td className="officer-table-message">
-                            {log.notes || "--"}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="officer-quick-grid">
+              <QuickAction
+                to="/responder/live-monitoring"
+                icon={RadioTower}
+                title="View Live Monitoring"
+                description="Open CCTV, AI detections, and live risk"
+              />
+              <QuickAction
+                to="/responder/alerts"
+                icon={Bell}
+                title="View Alerts"
+                description="Acknowledge active flood alerts"
+              />
+              <QuickAction
+                to="/responder/evacuation-advisories"
+                icon={ShieldAlert}
+                title="Evacuation Advisories"
+                description="Read active evacuation instructions"
+              />
+              <QuickAction
+                to="/responder/response-logs"
+                icon={ClipboardList}
+                title="Record Response"
+                description="Create or update your field activity"
+              />
+              <QuickAction
+                to="/responder/coordinate"
+                icon={FileText}
+                title="View Response Logs"
+                description="Follow recent team response activity"
+              />
+              <QuickAction
+                to="/responder/water-level-history"
+                icon={History}
+                title="Water Level History"
+                description="Review station readings and trends"
+              />
             </div>
-            <Link className="resident-view-link" to="/responder/response-logs">
-              Manage response logs
-            </Link>
           </section>
         </main>
       )}
