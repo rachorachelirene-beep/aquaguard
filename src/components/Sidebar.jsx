@@ -101,14 +101,28 @@ const roleMenus = {
     { label: "Reports", to: "/responder/reports", icon: FileText },
   ],
   resident: [
-    { label: "Flood Status", to: "/resident/dashboard", icon: Gauge },
+    { label: "Dashboard", to: "/resident/dashboard", icon: LayoutDashboard },
     { label: "Alerts", to: "/resident/alerts", icon: Bell },
+    {
+      label: "Evacuation Advisories",
+      to: "/resident/evacuation-advisories",
+      icon: ShieldAlert,
+    },
+    {
+      label: "Weather",
+      to: "/resident/weather",
+      icon: CloudRain,
+    },
+    {
+      label: "Safety Reminders",
+      to: "/resident/safety-reminders",
+      icon: ShieldAlert,
+    },
     {
       label: "Announcements",
       to: "/resident/announcements",
       icon: Megaphone,
     },
-    { label: "Safety Tips", to: "/resident/safety-tips", icon: ShieldAlert },
   ],
 };
 

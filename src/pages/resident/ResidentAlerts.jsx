@@ -3,36 +3,11 @@ import { RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { supabase } from "../../lib/supabase";
-
-function formatDateTime(value) {
-  if (!value) {
-    return "--";
-  }
-
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function getAlertClass(type) {
-  if (type === "critical") {
-    return "red";
-  }
-
-  if (type === "warning") {
-    return "orange-card";
-  }
-
-  if (type === "system") {
-    return "blue-card";
-  }
-
-  return "yellow-card";
-}
+import {
+  formatDateTime,
+  getAlertCardClass,
+  getSeverityBadge,
+} from "./residentUtils";
 
 export default function ResidentAlerts() {
   const [alerts, setAlerts] = useState([]);
@@ -40,30 +15,28 @@ export default function ResidentAlerts() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [filter, setFilter] = useState("active");
 
   const loadAlerts = useCallback(async () => {
-    try {
-      setLoading(true);
-      setErrorMessage("");
+    setLoading(true);
+    setErrorMessage("");
 
+    try {
       const [alertsResult, stationsResult] = await Promise.all([
         supabase
           .from("alerts")
           .select(
             "id, station_id, type, title, message, is_resolved, created_at"
           )
-          .eq("is_resolved", false)
           .order("created_at", { ascending: false })
-          .limit(100),
+          .limit(300),
         supabase
           .from("stations")
-          .select("id, name, location, station_code"),
+          .select("id, name, location, station_code")
+          .order("name", { ascending: true }),
       ]);
 
-      const firstError = [alertsResult.error, stationsResult.error].find(
-        Boolean
-      );
+      const firstError = [alertsResult.error, stationsResult.error].find(Boolean);
 
       if (firstError) {
         throw firstError;
@@ -73,29 +46,23 @@ export default function ResidentAlerts() {
       setStations(stationsResult.data ?? []);
     } catch (error) {
       console.error("Resident alerts loading error:", error);
-      setErrorMessage(error.message || "Unable to load alerts.");
+      setErrorMessage(
+        "Unable to load flood alerts. Check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    async function boot() {
-      await loadAlerts();
-    }
-
-    boot();
+    const timeout = window.setTimeout(loadAlerts, 0);
+    return () => window.clearTimeout(timeout);
   }, [loadAlerts]);
 
-  const stationMap = useMemo(() => {
-    const map = new Map();
-
-    stations.forEach((station) => {
-      map.set(String(station.id), station);
-    });
-
-    return map;
-  }, [stations]);
+  const stationMap = useMemo(
+    () => new Map(stations.map((station) => [String(station.id), station])),
+    [stations]
+  );
 
   const filteredAlerts = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -112,32 +79,27 @@ export default function ResidentAlerts() {
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
+      const matchesSearch = !keyword || searchableText.includes(keyword);
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "active" && !alert.is_resolved) ||
+        alert.type === filter;
 
-      const matchesSearch =
-        !keyword || searchableText.includes(keyword);
-      const matchesType =
-        typeFilter === "all" || alert.type === typeFilter;
-
-      return matchesSearch && matchesType;
+      return matchesSearch && matchesFilter;
     });
-  }, [alerts, searchText, typeFilter, stationMap]);
+  }, [alerts, filter, searchText, stationMap]);
 
-  const hasFilters = searchText || typeFilter !== "all";
+  const hasFilters = searchText || filter !== "active";
 
   return (
     <DashboardLayout
-      title="Alerts"
-      description="Active flood and safety alerts in your area."
+      title="Flood Alerts"
+      description="Official warning and critical flood updates for residents."
     >
       <main className="page-content officer-page">
-        {errorMessage && (
-          <div className="flash error">{errorMessage}</div>
-        )}
-
         <section className="section-card">
           <div className="section-title">
-            <span>Active Alerts</span>
-
+            <span>Flood Alerts</span>
             <button
               className="btn-cancel officer-icon-button"
               type="button"
@@ -152,27 +114,27 @@ export default function ResidentAlerts() {
             </button>
           </div>
 
-          <div className="officer-toolbar">
+          <div className="officer-toolbar resident-toolbar">
             <label className="officer-search">
               <Search size={17} />
               <input
                 type="search"
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Search alerts..."
+                placeholder="Search alerts or locations..."
               />
             </label>
 
             <select
               className="form-input officer-filter-select"
-              value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              aria-label="Filter flood alerts"
             >
-              <option value="all">All Types</option>
-              <option value="critical">Critical</option>
+              <option value="active">Active</option>
+              <option value="all">All</option>
               <option value="warning">Warning</option>
-              <option value="system">System</option>
-              <option value="info">Info</option>
+              <option value="critical">Critical</option>
             </select>
 
             {hasFilters && (
@@ -181,7 +143,7 @@ export default function ResidentAlerts() {
                 type="button"
                 onClick={() => {
                   setSearchText("");
-                  setTypeFilter("all");
+                  setFilter("active");
                 }}
               >
                 <X size={16} />
@@ -195,35 +157,63 @@ export default function ResidentAlerts() {
             </span>
           </div>
 
-          <div className="resident-card-grid">
-            {loading ? (
-              <div className="dashboard-empty">Loading alerts...</div>
-            ) : filteredAlerts.length === 0 ? (
-              <div className="dashboard-empty">
-                No active alerts at this time.
-              </div>
-            ) : (
-              filteredAlerts.map((alert) => {
+          {loading ? (
+            <div className="dashboard-empty">Loading flood alerts...</div>
+          ) : errorMessage ? (
+            <div className="dashboard-empty error">
+              <strong>{errorMessage}</strong>
+              <button
+                className="btn-submit officer-icon-button"
+                type="button"
+                onClick={loadAlerts}
+              >
+                Try again
+              </button>
+            </div>
+          ) : filteredAlerts.length === 0 ? (
+            <div className="dashboard-empty">
+              No alerts match the selected filter.
+            </div>
+          ) : (
+            <div className="resident-card-grid">
+              {filteredAlerts.map((alert) => {
                 const station = stationMap.get(String(alert.station_id));
 
                 return (
                   <article
-                    className={`alert-card ${getAlertClass(alert.type)}`}
+                    className={`alert-card ${getAlertCardClass(alert.type)}`}
                     key={alert.id}
                   >
+                    <div className="officer-alert-badges">
+                      <span className={`badge ${getSeverityBadge(alert.type)}`}>
+                        {alert.type ?? "Alert"}
+                      </span>
+                      <span
+                        className={`badge ${
+                          alert.is_resolved ? "badge-gray" : "badge-orange"
+                        }`}
+                      >
+                        {alert.is_resolved ? "Resolved" : "Active"}
+                      </span>
+                    </div>
+                    <div className="alert-title">
+                      {alert.title || "Flood alert"}
+                    </div>
+                    <div className="alert-body">
+                      {alert.message || "No additional details were provided."}
+                    </div>
+                    <div className="officer-table-subtext">
+                      {station?.name ?? "Community alert"}
+                      {station?.location ? ` | ${station.location}` : ""}
+                    </div>
                     <div className="alert-time">
                       {formatDateTime(alert.created_at)}
                     </div>
-                    <div className="alert-title">{alert.title}</div>
-                    <div className="alert-body">{alert.message}</div>
-                    <div className="officer-table-subtext">
-                      {station?.name ?? "General alert"}
-                    </div>
                   </article>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </section>
       </main>
     </DashboardLayout>

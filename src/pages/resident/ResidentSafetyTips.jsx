@@ -3,41 +3,7 @@ import { RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { supabase } from "../../lib/supabase";
-
-const fallbackTips = [
-  {
-    id: "fallback-1",
-    icon: "!",
-    title: "Prepare an emergency bag",
-    body: "Keep water, food, flashlight, medicine, power bank, and important documents ready.",
-  },
-  {
-    id: "fallback-2",
-    icon: "~",
-    title: "Avoid floodwater",
-    body: "Do not walk or drive through floodwater. It may be deeper or faster than it looks.",
-  },
-  {
-    id: "fallback-3",
-    icon: "^",
-    title: "Move to higher ground",
-    body: "If water level rises quickly, move your family to a safe elevated area immediately.",
-  },
-];
-
-function decodeIcon(value) {
-  if (!value) {
-    return "!";
-  }
-
-  return String(value)
-    .replace(/&#(\d+);/g, (_match, code) =>
-      String.fromCodePoint(Number(code))
-    )
-    .replace(/&#x([0-9a-f]+);/gi, (_match, code) =>
-      String.fromCodePoint(Number.parseInt(code, 16))
-    );
-}
+import { decodeReminderIcon } from "./residentUtils";
 
 export default function ResidentSafetyTips() {
   const [tips, setTips] = useState([]);
@@ -64,20 +30,17 @@ export default function ResidentSafetyTips() {
     } catch (error) {
       console.error("Resident safety tips loading error:", error);
       setErrorMessage(
-        "Safety reminder table is unavailable. Showing default tips."
+        "Safety reminders are temporarily unavailable. Check your connection and try again."
       );
-      setTips(fallbackTips);
+      setTips([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    async function boot() {
-      await loadTips();
-    }
-
-    boot();
+    const timeout = window.setTimeout(loadTips, 0);
+    return () => window.clearTimeout(timeout);
   }, [loadTips]);
 
   const filteredTips = useMemo(() => {
@@ -98,14 +61,10 @@ export default function ResidentSafetyTips() {
 
   return (
     <DashboardLayout
-      title="Safety Tips"
-      description="Flood safety reminders for residents."
+      title="Safety Reminders"
+      description="Official flood-safety reminders for residents."
     >
       <main className="page-content officer-page">
-        {errorMessage && (
-          <div className="flash error">{errorMessage}</div>
-        )}
-
         <section className="section-card">
           <div className="section-title">
             <span>Safety Reminders</span>
@@ -154,16 +113,27 @@ export default function ResidentSafetyTips() {
 
           <div className="resident-tip-grid">
             {loading ? (
-              <div className="dashboard-empty">Loading safety tips...</div>
+              <div className="dashboard-empty">Loading safety reminders...</div>
+            ) : errorMessage ? (
+              <div className="dashboard-empty error">
+                <strong>{errorMessage}</strong>
+                <button
+                  className="btn-submit officer-icon-button"
+                  type="button"
+                  onClick={loadTips}
+                >
+                  Try again
+                </button>
+              </div>
             ) : filteredTips.length === 0 ? (
               <div className="dashboard-empty">
-                No safety tips found.
+                No safety reminders have been published.
               </div>
             ) : (
               filteredTips.map((tip) => (
                 <article className="resident-tip-card" key={tip.id}>
                   <div className="resident-tip-icon">
-                    {decodeIcon(tip.icon)}
+                    {decodeReminderIcon(tip.icon)}
                   </div>
                   <strong>{tip.title}</strong>
                   <span>{tip.body}</span>

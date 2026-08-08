@@ -1,182 +1,71 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Bell, CloudRain, ShieldAlert, Waves } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import useRealtimeDetection from "../../hooks/useRealtimeDetection";
 import { supabase } from "../../lib/supabase";
+import {
+  decodeReminderIcon,
+  formatDateTime,
+  formatMeasurement,
+  getAgeMinutes,
+  getAlertCardClass,
+  getCombinedRiskView,
+  getSeverityBadge,
+  getWaterStatus,
+  newestTimestamp,
+  toNullableNumber,
+} from "./residentUtils";
 
-const fallbackTips = [
-  {
-    id: "fallback-1",
-    icon: "!",
-    title: "Prepare an emergency bag",
-    body: "Keep water, food, flashlight, medicine, power bank, and important documents ready.",
-  },
-  {
-    id: "fallback-2",
-    icon: "~",
-    title: "Avoid floodwater",
-    body: "Do not walk or drive through floodwater. It may be deeper or faster than it looks.",
-  },
-  {
-    id: "fallback-3",
-    icon: "^",
-    title: "Move to higher ground",
-    body: "If water level rises quickly, move your family to a safe elevated area immediately.",
-  },
-];
+const cameraApiBaseUrl = (
+  import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000"
+).replace(/\/+$/, "");
 
-function toNumber(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
+function firstValidNumber(...values) {
+  for (const value of values) {
+    const number = toNullableNumber(value);
 
-function formatLevel(value) {
-  return `${toNumber(value).toFixed(2)} m`;
-}
-
-function formatDateTime(value) {
-  if (!value) {
-    return "--";
-  }
-
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function decodeIcon(value) {
-  if (!value) {
-    return "!";
-  }
-
-  return String(value)
-    .replace(/&#(\d+);/g, (_match, code) =>
-      String.fromCodePoint(Number(code))
-    )
-    .replace(/&#x([0-9a-f]+);/gi, (_match, code) =>
-      String.fromCodePoint(Number.parseInt(code, 16))
-    );
-}
-
-function getStatus(level, warning, critical) {
-  if (level >= critical) {
-    return {
-      key: "critical",
-      label: "CRITICAL",
-      residentLabel: "DANGER - EVACUATE NOW",
-      className: "red",
-      badge: "badge-red",
-      icon: "!",
-    };
-  }
-
-  if (level >= warning) {
-    return {
-      key: "warning",
-      label: "WARNING",
-      residentLabel: "WARNING - STAY ALERT",
-      className: "orange",
-      badge: "badge-orange",
-      icon: "!",
-    };
-  }
-
-  return {
-    key: "normal",
-    label: "NORMAL",
-    residentLabel: "SAFE - NO FLOOD THREAT",
-    className: "green",
-    badge: "badge-green",
-    icon: "✓",
-  };
-}
-
-function getAlertClass(type) {
-  if (type === "critical") {
-    return "red";
-  }
-
-  if (type === "warning") {
-    return "orange-card";
-  }
-
-  if (type === "system") {
-    return "blue-card";
-  }
-
-  return "yellow-card";
-}
-
-function getAdvisoryBadge(level) {
-  if (level === "mandatory") {
-    return "badge-red";
-  }
-
-  if (level === "warning") {
-    return "badge-orange";
-  }
-
-  return "badge-green";
-}
-
-function buildLatestReadings(stations, readings) {
-  const latestByStation = new Map();
-
-  readings.forEach((reading) => {
-    const key = String(reading.station_id);
-
-    if (!latestByStation.has(key)) {
-      latestByStation.set(key, reading);
+    if (number != null) {
+      return number;
     }
-  });
+  }
 
-  return stations.map((station) => {
-    const reading = latestByStation.get(String(station.id)) ?? null;
-    const level = toNumber(reading?.level_m);
-    const warning = toNumber(station.warning_level, 2);
-    const critical = toNumber(station.critical_level, 2.5);
-
-    return {
-      station,
-      reading,
-      status: reading
-        ? getStatus(level, warning, critical)
-        : {
-            key: "unknown",
-            label: "NO DATA",
-            residentLabel: "NO CURRENT READING",
-            className: "gray",
-            badge: "badge-gray",
-            icon: "?",
-          },
-    };
-  });
+  return null;
 }
 
 export default function ResidentDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [stations, setStations] = useState([]);
-  const [latestReadings, setLatestReadings] = useState([]);
+  const [readings, setReadings] = useState([]);
+  const [detections, setDetections] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [announcements, setAnnouncements] = useState([]);
   const [advisories, setAdvisories] = useState([]);
-  const [tips, setTips] = useState([]);
+  const [weatherRows, setWeatherRows] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [remindersUnavailable, setRemindersUnavailable] = useState(false);
+  const [cachedRisk, setCachedRisk] = useState(null);
+  const [riskServiceUnavailable, setRiskServiceUnavailable] = useState(false);
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
+
+    setLoadError("");
+
     try {
-      setLoadError("");
-
       const [
         stationsResult,
         readingsResult,
+        detectionsResult,
         alertsResult,
-        announcementsResult,
         advisoriesResult,
-        tipsResult,
+        weatherResult,
+        announcementsResult,
+        remindersResult,
       ] = await Promise.all([
         supabase
           .from("stations")
@@ -190,24 +79,41 @@ export default function ResidentDashboard() {
           .order("recorded_at", { ascending: false })
           .limit(300),
         supabase
+          .from("yolo_detections")
+          .select(
+            "id, station_id, level_m, confidence, water_coverage, detected_at"
+          )
+          .order("detected_at", { ascending: false })
+          .limit(100),
+        supabase
           .from("alerts")
           .select(
             "id, station_id, type, title, message, is_resolved, created_at"
           )
           .eq("is_resolved", false)
+          .in("type", ["warning", "critical"])
           .order("created_at", { ascending: false })
-          .limit(12),
+          .limit(20),
+        supabase
+          .from("evacuation_advisories")
+          .select(
+            "id, title, area, level, details, is_active, issued_by, created_at"
+          )
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("weather_readings")
+          .select(
+            "id, station_id, temperature, precipitation, rain_1h, rain_6h, wind_speed, weather_code, condition_text, recorded_at"
+          )
+          .order("recorded_at", { ascending: false })
+          .limit(300),
         supabase
           .from("announcements")
           .select("id, title, body, created_at, created_by")
           .order("created_at", { ascending: false })
-          .limit(8),
-        supabase
-          .from("evacuation_advisories")
-          .select("id, title, area, level, details, is_active, created_at")
-          .eq("is_active", true)
-          .order("created_at", { ascending: false })
-          .limit(8),
+          .limit(10),
         supabase
           .from("safety_reminders")
           .select("id, title, body, icon, is_active")
@@ -215,28 +121,84 @@ export default function ResidentDashboard() {
           .order("id", { ascending: true }),
       ]);
 
-      const firstError = [
+      const requiredError = [
         stationsResult.error,
         readingsResult.error,
+        detectionsResult.error,
         alertsResult.error,
-        announcementsResult.error,
         advisoriesResult.error,
+        weatherResult.error,
+        announcementsResult.error,
       ].find(Boolean);
 
-      if (firstError) {
-        throw firstError;
+      if (requiredError) {
+        throw requiredError;
       }
 
-      setStations(stationsResult.data ?? []);
-      setLatestReadings(readingsResult.data ?? []);
+      if (remindersResult.error) {
+        console.warn("Resident safety reminders unavailable:", remindersResult.error);
+      }
+
+      const nextStations = stationsResult.data ?? [];
+      const nextReadings = readingsResult.data ?? [];
+      const nextDetections = detectionsResult.data ?? [];
+      const nextWeatherRows = weatherResult.data ?? [];
+      const validReading = nextReadings.find(
+        (reading) => toNullableNumber(reading.level_m) != null
+      );
+      const validDetection = nextDetections.find(
+        (detection) => toNullableNumber(detection.level_m) != null
+      );
+      const primaryStationId =
+        validReading?.station_id ??
+        validDetection?.station_id ??
+        nextWeatherRows[0]?.station_id ??
+        nextStations[0]?.id ??
+        null;
+      let nextRisk = null;
+      let nextRiskUnavailable = false;
+
+      if (primaryStationId != null) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+        try {
+          const response = await fetch(
+            `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
+              primaryStationId
+            )}`,
+            { signal: controller.signal }
+          );
+
+          if (!response.ok) {
+            throw new Error("Flood-risk service returned an error.");
+          }
+
+          const payload = await response.json();
+          nextRisk = payload?.combined_risk ?? null;
+        } catch (error) {
+          console.warn("Resident combined flood risk unavailable:", error);
+          nextRiskUnavailable = true;
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+
+      setStations(nextStations);
+      setReadings(nextReadings);
+      setDetections(nextDetections);
       setAlerts(alertsResult.data ?? []);
-      setAnnouncements(announcementsResult.data ?? []);
       setAdvisories(advisoriesResult.data ?? []);
-      setTips(tipsResult.error ? fallbackTips : tipsResult.data ?? []);
+      setWeatherRows(nextWeatherRows);
+      setAnnouncements(announcementsResult.data ?? []);
+      setReminders(remindersResult.error ? [] : remindersResult.data ?? []);
+      setRemindersUnavailable(Boolean(remindersResult.error));
+      setCachedRisk(nextRisk);
+      setRiskServiceUnavailable(nextRiskUnavailable);
     } catch (error) {
       console.error("Resident dashboard loading error:", error);
       setLoadError(
-        error.message || "Unable to load resident dashboard data."
+        "Unable to load current flood information. Check your connection and try again."
       );
     } finally {
       setLoading(false);
@@ -244,59 +206,92 @@ export default function ResidentDashboard() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-
-    async function boot({ initial = false } = {}) {
-      if (initial) {
-        setLoading(true);
-      }
-
-      await loadDashboard();
-
-      if (!active) {
-        return;
-      }
-    }
-
-    boot({ initial: true });
-    const interval = window.setInterval(() => boot(), 30000);
+    const initialLoad = window.setTimeout(() => loadDashboard(), 0);
+    const interval = window.setInterval(
+      () => loadDashboard({ showLoading: false }),
+      30000
+    );
 
     return () => {
-      active = false;
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
     };
   }, [loadDashboard]);
 
-  const stationCards = useMemo(
-    () => buildLatestReadings(stations, latestReadings),
-    [stations, latestReadings]
+  const stationMap = useMemo(
+    () => new Map(stations.map((station) => [String(station.id), station])),
+    [stations]
   );
-
-  const primary = stationCards.find((item) => item.reading) ?? stationCards[0];
-  const currentLevel = toNumber(primary?.reading?.level_m);
-  const warningLevel = toNumber(primary?.station?.warning_level, 2);
-  const criticalLevel = toNumber(primary?.station?.critical_level, 2.5);
-  const primaryStatus = primary?.reading
-    ? getStatus(currentLevel, warningLevel, criticalLevel)
-    : {
-        key: "unknown",
-        residentLabel: "NO CURRENT READING",
-        className: "gray",
-        icon: "?",
-      };
-  const activeAlerts = alerts.filter((alert) =>
-    ["critical", "warning"].includes(alert.type)
+  const storedReading = readings.find(
+    (reading) => toNullableNumber(reading.level_m) != null
   );
+  const storedDetection = detections.find(
+    (detection) => toNullableNumber(detection.level_m) != null
+  );
+  const primaryStationId =
+    storedReading?.station_id ??
+    storedDetection?.station_id ??
+    weatherRows[0]?.station_id ??
+    stations[0]?.id ??
+    "";
+  const primaryStation = stationMap.get(String(primaryStationId)) ?? null;
+  const primaryReading = readings.find(
+    (reading) =>
+      String(reading.station_id) === String(primaryStationId) &&
+      toNullableNumber(reading.level_m) != null
+  );
+  const primaryDetection = detections.find(
+    (detection) => String(detection.station_id) === String(primaryStationId)
+  );
+  const currentWeather = weatherRows.find(
+    (weather) => String(weather.station_id) === String(primaryStationId)
+  );
+  const selectedStationId = primaryStationId ? String(primaryStationId) : "";
+  const { detection: realtimeDetection, transport } = useRealtimeDetection({
+    cameraApiBaseUrl,
+    stationId: selectedStationId,
+  });
+  const realtimeMatchesStation =
+    realtimeDetection &&
+    (!realtimeDetection.station_id ||
+      String(realtimeDetection.station_id) === selectedStationId);
+  const currentDetection = realtimeMatchesStation ? realtimeDetection : null;
+  const currentLevel = firstValidNumber(
+    currentDetection?.level_m,
+    primaryDetection?.level_m,
+    primaryReading?.level_m
+  );
+  const waterStatus = getWaterStatus(currentLevel, primaryStation);
+  const combinedRisk = currentDetection?.combined_risk ?? cachedRisk;
+  const riskView = getCombinedRiskView(combinedRisk);
+  const latestAlert = alerts[0] ?? null;
+  const latestAdvisory = advisories[0] ?? null;
+  const lastUpdated = newestTimestamp(
+    currentDetection?.detected_at,
+    primaryDetection?.detected_at,
+    primaryReading?.recorded_at,
+    currentWeather?.recorded_at
+  );
+  const weatherAge = getAgeMinutes(currentWeather?.recorded_at);
+  const weatherIsStale = weatherAge != null && weatherAge > 30;
+  const monitoringMessage =
+    transport === "live"
+      ? "Live monitoring updates are connected."
+      : transport === "polling"
+        ? "Showing current monitoring updates."
+        : currentLevel == null
+          ? "Current water-level monitoring is unavailable."
+          : "Live updates are temporarily unavailable; showing the latest saved reading.";
 
   return (
     <DashboardLayout
-      title="Flood Status"
-      description="Stay informed about flood conditions in your area."
+      title="Resident Dashboard"
+      description="Current flood conditions and official safety information for your area."
     >
       {loading && (
         <div className="page-content">
           <div className="section-card dashboard-empty">
-            Loading resident dashboard...
+            Loading current flood information...
           </div>
         </div>
       )}
@@ -304,186 +299,234 @@ export default function ResidentDashboard() {
       {!loading && loadError && (
         <div className="page-content">
           <div className="section-card dashboard-empty error">
-            {loadError}
+            <strong>{loadError}</strong>
+            <button
+              className="btn-submit officer-icon-button"
+              type="button"
+              onClick={() => loadDashboard()}
+            >
+              Try again
+            </button>
           </div>
         </div>
       )}
 
       {!loading && !loadError && (
         <main className="page-content resident-dashboard">
-          <section
-            className={`resident-status-banner resident-status-${primaryStatus.key}`}
-          >
-            <div className="resident-status-icon">
-              {primaryStatus.icon}
-            </div>
-            <div>
-              <h2>{primaryStatus.residentLabel}</h2>
-              <p>
-                Water Level: <strong>{formatLevel(currentLevel)}</strong>{" "}
-                | Warning: {warningLevel.toFixed(2)} m | Critical:{" "}
-                {criticalLevel.toFixed(2)} m
-              </p>
-              <span>
-                {primary?.station?.name ?? "No station"} · Updated{" "}
-                {formatDateTime(primary?.reading?.recorded_at)}
-              </span>
-            </div>
+          <section className="resident-priority-grid">
+            <article
+              className={`resident-status-banner resident-status-${waterStatus.key}`}
+            >
+              <div className="resident-status-icon">{waterStatus.icon}</div>
+              <div>
+                <span className="resident-card-eyebrow">
+                  Current Flood Status
+                </span>
+                <h2>{waterStatus.label}</h2>
+                <p>{waterStatus.message}</p>
+                <span>
+                  {primaryStation?.name ?? "No monitoring station available"}
+                  {primaryStation?.location
+                    ? ` | ${primaryStation.location}`
+                    : ""}
+                </span>
+              </div>
+            </article>
+
+            <article className={`resident-risk-card ${riskView.className}`}>
+              <span className="resident-card-eyebrow">Combined Flood Risk</span>
+              <div className="resident-risk-heading">
+                <strong>{riskView.label}</strong>
+                <b>{riskView.scoreText}</b>
+              </div>
+              <p>{riskView.message}</p>
+              <small>Rule-based monitoring assessment, not flood probability.</small>
+            </article>
           </section>
 
-          <section className="resident-station-grid">
-            {stationCards.length === 0 ? (
-              <div className="section-card dashboard-empty">
-                No monitoring stations configured.
-              </div>
-            ) : (
-              stationCards.map((item) => (
-                <article
-                  className="lm-station-card resident-station-card"
-                  key={item.station.id}
-                >
-                  <div className="lm-station-top">
-                    <div className="lm-station-name">
-                      {item.station.name}
-                    </div>
-                    <span className={`lm-dot ${item.status.className}`} />
-                  </div>
-                  <strong className={`stat-value ${item.status.className}`}>
-                    {item.reading
-                      ? formatLevel(item.reading.level_m)
-                      : "No data"}
-                  </strong>
-                  <span>{item.station.location ?? item.station.station_code}</span>
-                  <span className={`badge ${item.status.badge}`}>
-                    {item.status.label}
+          <section
+            className={`section-card resident-emergency-card ${
+              latestAlert?.type === "critical" ? "critical" : ""
+            }`}
+          >
+            <div className="section-title">
+              <span>
+                <Bell size={18} /> Latest Flood Alert
+              </span>
+              <Link className="resident-view-link" to="/resident/alerts">
+                View alerts
+              </Link>
+            </div>
+            {latestAlert ? (
+              <article className={`alert-card ${getAlertCardClass(latestAlert.type)}`}>
+                <div className="officer-alert-badges">
+                  <span className={`badge ${getSeverityBadge(latestAlert.type)}`}>
+                    {latestAlert.type}
                   </span>
-                </article>
-              ))
+                  <span className="badge badge-orange">Active</span>
+                </div>
+                <div className="alert-title">{latestAlert.title}</div>
+                <div className="alert-body">{latestAlert.message}</div>
+                <small>
+                  {stationMap.get(String(latestAlert.station_id))?.name ??
+                    "Community alert"}{" "}
+                  | {formatDateTime(latestAlert.created_at)}
+                </small>
+              </article>
+            ) : (
+              <div className="dashboard-empty">
+                No active warning or critical alerts.
+              </div>
             )}
           </section>
 
-          {advisories.length > 0 && (
-            <section className="section-card resident-advisory-card">
-              <div className="section-title">
-                <span>Active Evacuation Advisories</span>
-                <span className="badge badge-red">
-                  {advisories.length} ACTIVE
-                </span>
-              </div>
-
-              <div className="resident-list">
-                {advisories.map((advisory) => (
-                  <article
-                    className="officer-list-item resident-advisory-item"
-                    key={advisory.id}
+          <section
+            className={`section-card resident-advisory-card ${
+              latestAdvisory ? "active" : ""
+            }`}
+          >
+            <div className="section-title">
+              <span>
+                <ShieldAlert size={18} /> Evacuation Advisory
+              </span>
+              <Link
+                className="resident-view-link"
+                to="/resident/evacuation-advisories"
+              >
+                View advisories
+              </Link>
+            </div>
+            {latestAdvisory ? (
+              <article className="officer-list-item resident-advisory-item">
+                <div className="officer-list-heading">
+                  <strong>{latestAdvisory.title}</strong>
+                  <span
+                    className={`badge ${getSeverityBadge(latestAdvisory.level)}`}
                   >
-                    <div className="officer-list-heading">
-                      <strong>{advisory.title}</strong>
-                      <span
-                        className={`badge ${getAdvisoryBadge(
-                          advisory.level
-                        )}`}
-                      >
-                        {advisory.level}
-                      </span>
-                    </div>
-                    <span>{advisory.area}</span>
-                    <p>{advisory.details}</p>
-                    <small>{formatDateTime(advisory.created_at)}</small>
-                  </article>
-                ))}
+                    {latestAdvisory.level ?? "Advisory"}
+                  </span>
+                </div>
+                <span>Affected area: {latestAdvisory.area || "Not specified"}</span>
+                <p>{latestAdvisory.details || "No instructions provided."}</p>
+                <small>{formatDateTime(latestAdvisory.created_at)}</small>
+              </article>
+            ) : (
+              <div className="dashboard-empty">
+                No active evacuation advisory.
               </div>
-            </section>
+            )}
+          </section>
+
+          <section className="resident-dashboard-grid resident-condition-grid">
+            <article className="section-card resident-condition-card">
+              <div className="resident-condition-icon">
+                <Waves size={24} />
+              </div>
+              <div>
+                <span className="resident-card-eyebrow">Current Water Level</span>
+                <strong>{formatMeasurement(currentLevel, "m", 2)}</strong>
+                <p>{monitoringMessage}</p>
+                <small>Last updated: {formatDateTime(lastUpdated)}</small>
+              </div>
+            </article>
+
+            <article className="section-card resident-condition-card">
+              <div className="resident-condition-icon weather">
+                <CloudRain size={24} />
+              </div>
+              <div>
+                <span className="resident-card-eyebrow">Current Weather</span>
+                <strong>
+                  {currentWeather?.condition_text || "Weather unavailable"}
+                </strong>
+                <p>
+                  {formatMeasurement(currentWeather?.temperature, "\u00b0C")} | Rain
+                  1h {formatMeasurement(currentWeather?.rain_1h, "mm")}
+                </p>
+                <small>
+                  {weatherIsStale
+                    ? "Weather reading may be out of date."
+                    : `Last updated: ${formatDateTime(
+                        currentWeather?.recorded_at
+                      )}`}
+                </small>
+                <Link className="resident-view-link" to="/resident/weather">
+                  View weather details
+                </Link>
+              </div>
+            </article>
+          </section>
+
+          {riskServiceUnavailable && !riskView.assessed && (
+            <div className="resident-monitoring-note">
+              Combined flood risk is temporarily unavailable. Other saved safety
+              information remains visible.
+            </div>
           )}
 
           <section className="resident-dashboard-grid">
             <div className="section-card">
               <div className="section-title">
-                <span>Active Alerts</span>
-                {activeAlerts.length > 0 && (
-                  <span className="badge badge-red">
-                    {activeAlerts.length}
-                  </span>
-                )}
+                <span>Safety Reminders</span>
+                <Link
+                  className="resident-view-link"
+                  to="/resident/safety-reminders"
+                >
+                  View all
+                </Link>
               </div>
-
-              <div className="alert-grid resident-alert-grid">
-                {alerts.length === 0 ? (
-                  <div className="dashboard-empty">
-                    No active alerts at this time.
-                  </div>
-                ) : (
-                  alerts.slice(0, 6).map((alert) => (
-                    <article
-                      className={`alert-card ${getAlertClass(alert.type)}`}
-                      key={alert.id}
-                    >
-                      <div className="alert-time">
-                        {formatDateTime(alert.created_at)}
+              {remindersUnavailable ? (
+                <div className="dashboard-empty">
+                  Safety reminders are temporarily unavailable.
+                </div>
+              ) : reminders.length === 0 ? (
+                <div className="dashboard-empty">
+                  No safety reminders have been published.
+                </div>
+              ) : (
+                <div className="resident-tip-grid resident-tip-grid-compact">
+                  {reminders.slice(0, 3).map((reminder) => (
+                    <article className="resident-tip-card" key={reminder.id}>
+                      <div className="resident-tip-icon">
+                        {decodeReminderIcon(reminder.icon)}
                       </div>
-                      <div className="alert-title">{alert.title}</div>
-                      <div className="alert-body">{alert.message}</div>
+                      <strong>{reminder.title}</strong>
+                      <span>{reminder.body}</span>
                     </article>
-                  ))
-                )}
-              </div>
-
-              <Link className="resident-view-link" to="/resident/alerts">
-                View all alerts
-              </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="section-card">
-              <div className="section-title">Announcements</div>
-
+              <div className="section-title">
+                <span>Community Announcements</span>
+                <Link
+                  className="resident-view-link"
+                  to="/resident/announcements"
+                >
+                  View all
+                </Link>
+              </div>
               <div className="resident-list">
                 {announcements.length === 0 ? (
                   <div className="dashboard-empty">
                     No announcements at this time.
                   </div>
                 ) : (
-                  announcements.slice(0, 5).map((announcement) => (
+                  announcements.slice(0, 3).map((announcement) => (
                     <article
                       className="officer-list-item resident-list-item"
                       key={announcement.id}
                     >
                       <strong>{announcement.title}</strong>
-                      <span>{announcement.body?.slice(0, 140)}</span>
+                      <span>{announcement.body}</span>
                       <small>{formatDateTime(announcement.created_at)}</small>
                     </article>
                   ))
                 )}
               </div>
-
-              <Link
-                className="resident-view-link"
-                to="/resident/announcements"
-              >
-                View all announcements
-              </Link>
             </div>
-          </section>
-
-          <section className="section-card">
-            <div className="section-title">Safety Reminders</div>
-
-            <div className="resident-tip-grid">
-              {(tips.length > 0 ? tips : fallbackTips)
-                .slice(0, 6)
-                .map((tip) => (
-                  <article className="resident-tip-card" key={tip.id}>
-                    <div className="resident-tip-icon">
-                      {decodeIcon(tip.icon)}
-                    </div>
-                    <strong>{tip.title}</strong>
-                    <span>{tip.body}</span>
-                  </article>
-                ))}
-            </div>
-
-            <Link className="resident-view-link" to="/resident/safety-tips">
-              View all safety tips
-            </Link>
           </section>
         </main>
       )}

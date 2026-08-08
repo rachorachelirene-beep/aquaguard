@@ -17,7 +17,9 @@ function getLevelBadge(level) {
   return "badge-blue";
 }
 
-export default function ResponderEvacuationAdvisories() {
+export default function ResponderEvacuationAdvisories({
+  description = "Read current evacuation guidance and recent notices for field operations.",
+}) {
   const [advisories, setAdvisories] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +108,7 @@ export default function ResponderEvacuationAdvisories() {
   return (
     <DashboardLayout
       title="Evacuation Advisories"
-      description="Read current evacuation guidance and recent notices for field operations."
+      description={description}
     >
       <main className="page-content officer-page">
         <section className="section-card">
@@ -202,7 +204,9 @@ export default function ResponderEvacuationAdvisories() {
 
                 return (
                   <article
-                    className="officer-list-item resident-advisory-item"
+                    className={`officer-list-item resident-advisory-item ${
+                      advisory.is_active ? "resident-advisory-active" : ""
+                    }`}
                     key={advisory.id}
                   >
                     <div className="officer-list-heading">

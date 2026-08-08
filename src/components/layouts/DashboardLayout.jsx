@@ -43,10 +43,18 @@ export default function DashboardLayout({
     let active = true;
 
     async function loadUnreadAlertCount() {
-      const { count, error } = await supabase
+      let query = supabase
         .from("alerts")
-        .select("id", { count: "exact", head: true })
-        .eq("is_read", false);
+        .select("id", { count: "exact", head: true });
+
+      query =
+        profile?.role === "resident"
+          ? query
+              .eq("is_resolved", false)
+              .in("type", ["warning", "critical"])
+          : query.eq("is_read", false);
+
+      const { count, error } = await query;
 
       if (!active) {
         return;
@@ -73,7 +81,7 @@ export default function DashboardLayout({
       );
       window.clearInterval(interval);
     };
-  }, []);
+  }, [profile?.role]);
 
   useEffect(() => {
     function handleEscape(event) {

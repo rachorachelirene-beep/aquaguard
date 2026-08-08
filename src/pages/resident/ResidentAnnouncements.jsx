@@ -3,20 +3,7 @@ import { RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { supabase } from "../../lib/supabase";
-
-function formatDateTime(value) {
-  if (!value) {
-    return "--";
-  }
-
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatDateTime } from "./residentUtils";
 
 export default function ResidentAnnouncements() {
   const [announcements, setAnnouncements] = useState([]);
@@ -42,18 +29,17 @@ export default function ResidentAnnouncements() {
       setAnnouncements(data ?? []);
     } catch (error) {
       console.error("Resident announcements loading error:", error);
-      setErrorMessage(error.message || "Unable to load announcements.");
+      setErrorMessage(
+        "Unable to load announcements. Check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    async function boot() {
-      await loadAnnouncements();
-    }
-
-    boot();
+    const timeout = window.setTimeout(loadAnnouncements, 0);
+    return () => window.clearTimeout(timeout);
   }, [loadAnnouncements]);
 
   const filteredAnnouncements = useMemo(() => {
@@ -78,10 +64,6 @@ export default function ResidentAnnouncements() {
       description="Latest community updates from AquaGuard."
     >
       <main className="page-content officer-page">
-        {errorMessage && (
-          <div className="flash error">{errorMessage}</div>
-        )}
-
         <section className="section-card">
           <div className="section-title">
             <span>Announcements</span>
@@ -132,6 +114,17 @@ export default function ResidentAnnouncements() {
             {loading ? (
               <div className="dashboard-empty">
                 Loading announcements...
+              </div>
+            ) : errorMessage ? (
+              <div className="dashboard-empty error">
+                <strong>{errorMessage}</strong>
+                <button
+                  className="btn-submit officer-icon-button"
+                  type="button"
+                  onClick={loadAnnouncements}
+                >
+                  Try again
+                </button>
               </div>
             ) : filteredAnnouncements.length === 0 ? (
               <div className="dashboard-empty">

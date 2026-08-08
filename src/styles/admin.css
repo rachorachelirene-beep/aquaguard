@@ -1168,6 +1168,86 @@
   gap: 16px;
 }
 
+.resident-priority-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 16px;
+}
+
+.resident-card-eyebrow {
+  color: var(--aq-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.resident-risk-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+  padding: 22px;
+  border: 1px solid var(--aq-border);
+  border-radius: 14px;
+}
+
+.resident-risk-card p,
+.resident-risk-card small {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.resident-risk-card p {
+  font-size: 0.84rem;
+}
+
+.resident-risk-card small {
+  font-size: 0.7rem;
+  opacity: 0.82;
+}
+
+.resident-risk-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.resident-risk-heading strong {
+  font-size: 1.35rem;
+}
+
+.resident-risk-heading b {
+  font-size: 1.1rem;
+}
+
+.resident-risk-neutral {
+  border-color: var(--aq-border-strong);
+  color: var(--aq-muted);
+  background: var(--aq-surface-soft);
+}
+
+.resident-risk-low {
+  border-color: rgba(47, 158, 105, 0.35);
+  color: var(--aq-success);
+  background: var(--aq-success-soft);
+}
+
+.resident-risk-moderate {
+  border-color: rgba(199, 123, 42, 0.35);
+  color: var(--aq-warning);
+  background: var(--aq-warning-soft);
+}
+
+.resident-risk-high,
+.resident-risk-critical {
+  border-color: rgba(216, 74, 74, 0.35);
+  color: var(--aq-danger);
+  background: var(--aq-danger-soft);
+}
+
 .resident-status-banner {
   display: flex;
   align-items: center;
@@ -1279,6 +1359,81 @@
   align-items: start;
 }
 
+.resident-condition-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.resident-condition-card > div:last-child {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resident-condition-card strong {
+  color: var(--aq-text);
+  font-size: 1.35rem;
+}
+
+.resident-condition-card p,
+.resident-condition-card small {
+  margin: 0;
+  color: var(--aq-muted);
+  line-height: 1.45;
+}
+
+.resident-condition-card p {
+  font-size: 0.8rem;
+}
+
+.resident-condition-card small {
+  font-size: 0.72rem;
+}
+
+.resident-condition-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  flex: 0 0 46px;
+  place-items: center;
+  border-radius: 12px;
+  color: #ffffff;
+  background: var(--aq-primary);
+}
+
+.resident-condition-icon.weather {
+  background: var(--aq-primary-strong);
+}
+
+.resident-monitoring-note,
+.resident-stale-notice {
+  padding: 12px 14px;
+  border: 1px solid var(--aq-border-strong);
+  border-radius: 10px;
+  color: var(--aq-muted);
+  background: var(--aq-surface-soft);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.resident-emergency-card.critical {
+  border-color: rgba(216, 74, 74, 0.42);
+  box-shadow: 0 0 0 2px rgba(216, 74, 74, 0.08);
+}
+
+.resident-dashboard .section-title > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.resident-dashboard .section-title .resident-view-link {
+  margin-top: 0;
+}
+
 .responder-dashboard-stations {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1315,6 +1470,13 @@
   line-height: 1.45;
 }
 
+.resident-advisory-active {
+  padding: 14px;
+  border: 1px solid rgba(216, 74, 74, 0.24);
+  border-radius: 10px;
+  background: var(--aq-danger-soft);
+}
+
 .resident-view-link {
   display: inline-flex;
   margin-top: 12px;
@@ -1341,6 +1503,14 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.resident-tip-grid-compact {
+  grid-template-columns: 1fr;
+}
+
+.resident-tip-grid-compact .resident-tip-card {
+  min-height: 0;
 }
 
 .resident-tip-card {
@@ -1375,6 +1545,35 @@
   color: var(--aq-muted);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.resident-weather-source {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--aq-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.resident-weather-source strong {
+  flex: 0 0 auto;
+  color: var(--aq-text);
+}
+
+.resident-weather-source span {
+  flex: 1;
+}
+
+.resident-weather-source a {
+  flex: 0 0 auto;
+  color: var(--aq-primary);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.resident-weather-source a:hover {
+  text-decoration: underline;
 }
 
 .lm-dot.green {
@@ -2731,6 +2930,7 @@ textarea.form-input {
   .lm-station-cards,
   .lm-right,
   .lm-health-grid,
+  .resident-priority-grid,
   .resident-card-grid,
   .resident-tip-grid,
   .resident-station-grid,
@@ -2740,6 +2940,11 @@ textarea.form-input {
   }
 
   .resident-status-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .resident-weather-source {
     align-items: flex-start;
     flex-direction: column;
   }

@@ -46,7 +46,9 @@ import ResponderWaterLevelHistory from "./pages/responder/ResponderWaterLevelHis
 import ResidentAlerts from "./pages/resident/ResidentAlerts";
 import ResidentAnnouncements from "./pages/resident/ResidentAnnouncements";
 import ResidentDashboard from "./pages/resident/ResidentDashboard";
+import ResidentEvacuationAdvisories from "./pages/resident/ResidentEvacuationAdvisories";
 import ResidentSafetyTips from "./pages/resident/ResidentSafetyTips";
+import ResidentWeather from "./pages/resident/ResidentWeather";
 
 export default function App() {
   return (
@@ -408,6 +410,33 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={["resident"]}>
                 <ResidentAnnouncements />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/resident/evacuation-advisories"
+            element={
+              <ProtectedRoute allowedRoles={["resident"]}>
+                <ResidentEvacuationAdvisories />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/resident/weather"
+            element={
+              <ProtectedRoute allowedRoles={["resident"]}>
+                <ResidentWeather />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/resident/safety-reminders"
+            element={
+              <ProtectedRoute allowedRoles={["resident"]}>
+                <ResidentSafetyTips />
               </ProtectedRoute>
             }
           />
