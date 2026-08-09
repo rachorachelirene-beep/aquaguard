@@ -26,6 +26,7 @@ export default function Login() {
     location.state?.message ?? ""
   );
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -130,6 +131,46 @@ export default function Login() {
     }
   }
 
+  async function handleForgotPassword() {
+    const email = form.email.trim();
+
+    if (!email) {
+      setSuccessMessage("");
+      setErrorMessage(
+        "Enter your email address first, then select Forgot password."
+      );
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        email,
+        {
+          redirectTo: `${window.location.origin}/reset-password`,
+        }
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      setSuccessMessage(
+        "If an account exists for that email, a password-reset link has been sent."
+      );
+    } catch (error) {
+      console.error("Password-reset error:", error);
+      setErrorMessage(
+        error.message || "Unable to send the password-reset email."
+      );
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   return (
     <main className="auth-page">
       <section className="auth-card">
@@ -145,13 +186,13 @@ export default function Login() {
         </p>
 
         {errorMessage && (
-          <div className="auth-message auth-error">
+          <div className="auth-message auth-error" role="alert">
             {errorMessage}
           </div>
         )}
 
         {successMessage && (
-          <div className="auth-message auth-success">
+          <div className="auth-message auth-success" role="status">
             {successMessage}
           </div>
         )}
@@ -191,9 +232,18 @@ export default function Login() {
           />
 
           <button
+            className="auth-forgot-button"
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={loading || resetLoading}
+          >
+            {resetLoading ? "Sending reset link..." : "Forgot password?"}
+          </button>
+
+          <button
             className="auth-button"
             type="submit"
-            disabled={loading}
+            disabled={loading || resetLoading}
           >
             {loading ? "Signing in..." : "Sign In"}
           </button>

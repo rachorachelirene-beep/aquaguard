@@ -120,6 +120,34 @@
     transform 0.2s ease;
 }
 
+.auth-forgot-button {
+  display: block;
+  margin: -8px 0 18px auto;
+  padding: 0;
+  border: 0;
+  color: #2563eb;
+  background: transparent;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-forgot-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.auth-forgot-button:focus-visible {
+  border-radius: 4px;
+  outline: 3px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 3px;
+}
+
+.auth-forgot-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .auth-button:hover:not(:disabled) {
   box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24);
   transform: translateY(-1px);
