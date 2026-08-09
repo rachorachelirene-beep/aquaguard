@@ -547,33 +547,6 @@
   padding: 14px 24px 0;
 }
 
-.live-feed-card {
-  position: relative;
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--aq-border);
-  border-radius: 12px;
-  background: var(--aq-surface);
-}
-
-.live-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  color: #ffffff;
-  background: rgba(0, 0, 0, 0.7);
-  font-size: 0.72rem;
-}
-
 .live-dot {
   width: 8px;
   height: 8px;
@@ -592,119 +565,6 @@
   50% {
     opacity: 0.4;
   }
-}
-
-.feed-bg {
-  position: relative;
-  min-height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  background: linear-gradient(180deg, #092033 0%, #0b3345 48%, #123f35 100%);
-}
-
-.feed-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.feed-placeholder p {
-  margin-top: 8px;
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 0.8rem;
-}
-
-.level-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  align-items: flex-start;
-  padding: 44px 12px 12px;
-  pointer-events: none;
-}
-
-.level-box {
-  padding: 8px 14px;
-  border: 1px solid rgba(31, 111, 139, 0.4);
-  border-radius: 8px;
-  color: #b8e6f2;
-  background: rgba(31, 111, 139, 0.18);
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-.level-box strong {
-  display: block;
-  font-size: 1.1rem;
-}
-
-.threshold-labels {
-  position: absolute;
-  top: 44px;
-  right: 52px;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-.th-label {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.62rem;
-  font-weight: 700;
-}
-
-.th-label.critical {
-  color: #ffffff;
-  background: var(--aq-danger);
-}
-
-.th-label.warning {
-  color: #ffffff;
-  background: var(--aq-warning);
-}
-
-.th-label.normal {
-  color: #ffffff;
-  background: var(--aq-success);
-}
-
-.water-bar-wrap {
-  position: absolute;
-  top: 44px;
-  right: 12px;
-  bottom: 44px;
-  width: 28px;
-  display: flex;
-  align-items: flex-end;
-  overflow: hidden;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.water-bar {
-  width: 100%;
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--aq-danger), var(--aq-warning), var(--aq-primary));
-  transition: height 0.5s;
-}
-
-.feed-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  color: var(--aq-muted);
-  background: var(--aq-surface-soft);
-  font-size: 0.78rem;
-}
-
-.feed-actions {
-  display: flex;
-  gap: 6px;
 }
 
 .icon-btn-sm {
@@ -835,6 +695,10 @@
   gap: 14px;
   align-items: start;
   padding: 14px 24px 24px;
+}
+
+.dashboard-bottom-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .chart-card,
@@ -993,6 +857,51 @@
 .officer-page {
   display: grid;
   gap: 16px;
+}
+
+.dashboard-alerts-row {
+  min-width: 0;
+  padding: 18px 28px 0;
+}
+
+.dashboard-alerts-panel {
+  min-width: 0;
+}
+
+.dashboard-alerts-panel .panel-header,
+.dashboard-alerts-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-alerts-header-actions {
+  justify-content: flex-end;
+}
+
+.dashboard-section-link {
+  color: var(--aq-primary);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+.dashboard-section-link:hover {
+  color: var(--aq-primary-strong);
+  text-decoration: underline;
+}
+
+.dashboard-alert-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.dashboard-alert-grid .alert-card {
+  min-width: 0;
+  padding: 14px;
 }
 
 .officer-monitoring-summary {
@@ -1721,12 +1630,16 @@
 
 .action-btns {
   display: flex;
-  flex-direction: column;
+  grid-column: 1 / -1;
+  flex-direction: row;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .action-btn {
+  min-width: 0;
   display: flex;
+  flex: 1 1 170px;
   flex-direction: column;
   align-items: center;
   gap: 6px;
@@ -1739,8 +1652,10 @@
   letter-spacing: 0.5px;
   line-height: 1.4;
   text-align: center;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   cursor: pointer;
+  text-decoration: none;
   transition: opacity 0.2s;
 }
 
@@ -1759,8 +1674,20 @@
 
 .dark-btn {
   border: 1px solid var(--aq-border);
-  color: var(--aq-text);
-  background: var(--aq-surface);
+  color: #ffffff;
+  background: var(--aq-primary-strong);
+}
+
+.live-monitoring-btn {
+  border: 1px solid var(--aq-primary-strong);
+  color: #ffffff;
+  background: var(--aq-primary-strong);
+}
+
+.dark-btn:hover,
+.live-monitoring-btn:hover {
+  color: #ffffff;
+  text-decoration: none;
 }
 
 .dashboard-empty {
@@ -3002,7 +2929,8 @@ textarea.form-input {
     padding: 12px 12px 0;
   }
 
-  .mid-row {
+  .mid-row,
+  .dashboard-alerts-row {
     padding: 8px 12px 0;
   }
 
@@ -3228,8 +3156,7 @@ textarea.form-input {
 }
 
 .hamburger,
-.icon-btn,
-.topbar-status-icon {
+.icon-btn {
   width: 42px;
   height: 42px;
   display: inline-flex;
@@ -3248,8 +3175,7 @@ textarea.form-input {
 }
 
 .hamburger:hover,
-.icon-btn:hover,
-.topbar-status-icon:hover {
+.icon-btn:hover {
   border-color: var(--aq-border-strong);
   color: var(--aq-primary);
   background: #ffffff;
@@ -3323,7 +3249,6 @@ textarea.form-input {
 
 .section-card,
 .stat-card,
-.live-feed-card,
 .alerts-panel,
 .chart-card,
 .station-card,
@@ -3457,15 +3382,6 @@ textarea.form-input {
   padding: 18px 28px 28px;
 }
 
-.feed-bg {
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(180deg, #061424 0%, #0b2741 56%, #073438 100%);
-  background-size: 34px 34px, 34px 34px, auto;
-}
-
-.feed-footer,
 .lm-feed-footer,
 .lm-feed-topbar {
   background: #f8fafc;
@@ -3528,6 +3444,7 @@ textarea.form-input {
 
 .dark-btn,
 .btn-submit {
+  color: #ffffff;
   background: var(--aq-primary-strong);
 }
 
@@ -3639,6 +3556,7 @@ textarea.form-input {
 
   .stat-cards,
   .mid-row,
+  .dashboard-alerts-row,
   .bottom-row {
     padding-right: 16px;
     padding-left: 16px;
@@ -3686,6 +3604,7 @@ textarea.form-input {
 .admin-shell main[class$="-page"] button[class*="submit"],
 .admin-shell main[class$="-page"] a[class*="primary"] {
   border-color: #0b192e;
+  color: #ffffff;
   background: #0b192e;
 }
 
@@ -3708,198 +3627,4 @@ textarea.form-input {
 .stat-value.red,
 .stat-value.rain {
   background: transparent;
-}
-
-html[data-aq-theme="dark"] body {
-  background: #07111f;
-}
-
-html[data-aq-theme="dark"] .admin-shell {
-  --aq-bg: #07111f;
-  --aq-surface: #101a2b;
-  --aq-surface-soft: #142237;
-  --aq-surface-muted: #1a2a42;
-  --aq-border: #25364f;
-  --aq-border-strong: #344763;
-  --aq-text: #eef6ff;
-  --aq-muted: #9fb0c5;
-  --aq-primary: #4fd9f4;
-  --aq-primary-strong: #d7f8ff;
-  --aq-primary-soft: #153849;
-  --aq-accent: #00c7eb;
-  --aq-sidebar: #0b1524;
-  --aq-sidebar-active: #00bfe0;
-  --aq-sidebar-text: #d2dfef;
-  --aq-success-soft: #103225;
-  --aq-warning-soft: #3a2b12;
-  --aq-danger-soft: #3a1518;
-  --aq-purple-soft: #1b2740;
-  --aq-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
-  background: var(--aq-bg);
-  color: var(--aq-text);
-}
-
-html[data-aq-theme="dark"] .sidebar,
-html[data-aq-theme="dark"] .main,
-html[data-aq-theme="dark"] .page-content,
-html[data-aq-theme="dark"] .prediction-page,
-html[data-aq-theme="dark"] .stations-page,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] {
-  background: var(--aq-bg);
-  color: var(--aq-text);
-}
-
-html[data-aq-theme="dark"] .sidebar {
-  border-color: var(--aq-border);
-}
-
-html[data-aq-theme="dark"] .topbar {
-  background: rgba(7, 17, 31, 0.94);
-  border-color: var(--aq-border);
-}
-
-html[data-aq-theme="dark"] .sidebar-logo,
-html[data-aq-theme="dark"] .page-title,
-html[data-aq-theme="dark"] .stat-value,
-html[data-aq-theme="dark"] .panel-header,
-html[data-aq-theme="dark"] .station-name,
-html[data-aq-theme="dark"] .activity-item,
-html[data-aq-theme="dark"] .lm-station-name,
-html[data-aq-theme="dark"] .lm-feed-footer strong,
-html[data-aq-theme="dark"] .lm-health-item strong,
-html[data-aq-theme="dark"] .lm-risk-meta strong,
-html[data-aq-theme="dark"] .lm-risk-factors b,
-html[data-aq-theme="dark"] .lm-alert-item strong,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] h1,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] h2,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] h3,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] strong {
-  color: var(--aq-text);
-}
-
-html[data-aq-theme="dark"] .brand-logo-title,
-html[data-aq-theme="dark"] .brand-logo-subtitle,
-html[data-aq-theme="dark"] .page-sub,
-html[data-aq-theme="dark"] .stat-sub,
-html[data-aq-theme="dark"] .station-loc,
-html[data-aq-theme="dark"] .station-meta,
-html[data-aq-theme="dark"] .data-table th,
-html[data-aq-theme="dark"] .data-table td,
-html[data-aq-theme="dark"] .lm-station-card span,
-html[data-aq-theme="dark"] .lm-feed-footer span,
-html[data-aq-theme="dark"] .lm-info-card p,
-html[data-aq-theme="dark"] .lm-health-item span,
-html[data-aq-theme="dark"] .lm-weather-lines,
-html[data-aq-theme="dark"] .lm-risk-meta,
-html[data-aq-theme="dark"] .lm-alert-item span,
-html[data-aq-theme="dark"] .lm-alert-item small,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] p,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] span,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] small {
-  color: var(--aq-muted);
-}
-
-html[data-aq-theme="dark"] .section-card,
-html[data-aq-theme="dark"] .stat-card,
-html[data-aq-theme="dark"] .live-feed-card,
-html[data-aq-theme="dark"] .alerts-panel,
-html[data-aq-theme="dark"] .chart-card,
-html[data-aq-theme="dark"] .station-card,
-html[data-aq-theme="dark"] .activity-card,
-html[data-aq-theme="dark"] .lm-feed-wrap,
-html[data-aq-theme="dark"] .lm-detection-log,
-html[data-aq-theme="dark"] .lm-info-card,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] [class*="-card"],
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] [class*="-panel"],
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] [class*="-toolbar"],
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] [class*="-summary"] {
-  border-color: var(--aq-border);
-  background: var(--aq-surface);
-  box-shadow: var(--aq-shadow);
-}
-
-html[data-aq-theme="dark"] .topbar-status-icon,
-html[data-aq-theme="dark"] .hamburger,
-html[data-aq-theme="dark"] .icon-btn,
-html[data-aq-theme="dark"] .weather-pill,
-html[data-aq-theme="dark"] .user-pill,
-html[data-aq-theme="dark"] .search-input,
-html[data-aq-theme="dark"] .form-input,
-html[data-aq-theme="dark"] .lm-detector-controls input,
-html[data-aq-theme="dark"] .lm-detector-controls button,
-html[data-aq-theme="dark"] .icon-btn-sm,
-html[data-aq-theme="dark"] .lm-action-btn,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] input,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] select,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] textarea,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] button {
-  border-color: var(--aq-border-strong);
-  color: var(--aq-text);
-  background: var(--aq-surface);
-}
-
-html[data-aq-theme="dark"] .topbar-status-icon:hover,
-html[data-aq-theme="dark"] .hamburger:hover,
-html[data-aq-theme="dark"] .icon-btn:hover,
-html[data-aq-theme="dark"] .icon-btn-sm:hover,
-html[data-aq-theme="dark"] .lm-action-btn:hover {
-  border-color: var(--aq-accent);
-  color: var(--aq-accent);
-  background: #13263d;
-}
-
-html[data-aq-theme="dark"] .topbar-status-icon[aria-pressed="true"] {
-  border-color: rgba(0, 199, 235, 0.55);
-  color: #001f28;
-  background: var(--aq-accent);
-}
-
-html[data-aq-theme="dark"] .search-input::placeholder,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] input::placeholder,
-html[data-aq-theme="dark"] .admin-shell main[class$="-page"] textarea::placeholder {
-  color: #7f91a8;
-}
-
-html[data-aq-theme="dark"] .nav-item:hover {
-  color: var(--aq-text);
-  background: rgba(0, 199, 235, 0.12);
-}
-
-html[data-aq-theme="dark"] .nav-item.active {
-  color: #001f28;
-  background: var(--aq-sidebar-active);
-}
-
-html[data-aq-theme="dark"] .sidebar-logo-image-mark {
-  border: 1px solid var(--aq-border);
-  background: #ffffff;
-}
-
-html[data-aq-theme="dark"] .stat-card::after {
-  background: rgba(0, 199, 235, 0.08);
-}
-
-html[data-aq-theme="dark"] .stat-icon,
-html[data-aq-theme="dark"] .weather-icon,
-html[data-aq-theme="dark"] .lm-health-item,
-html[data-aq-theme="dark"] .station-thresholds div,
-html[data-aq-theme="dark"] .stations-threshold-section {
-  border-color: var(--aq-border);
-  background: var(--aq-surface-soft);
-}
-
-html[data-aq-theme="dark"] .feed-footer,
-html[data-aq-theme="dark"] .lm-feed-footer,
-html[data-aq-theme="dark"] .lm-feed-topbar,
-html[data-aq-theme="dark"] .data-table tr:hover td {
-  background: var(--aq-surface-soft);
-}
-
-html[data-aq-theme="dark"] .modal-box {
-  border-color: var(--aq-border);
-  background: var(--aq-surface);
-}
-
-html[data-aq-theme="dark"] .modal-overlay {
-  background: rgba(0, 0, 0, 0.72);
 }

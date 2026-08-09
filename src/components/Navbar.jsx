@@ -5,7 +5,6 @@ import {
   Cloud,
   CloudRain,
   Menu,
-  Moon,
   Search,
   Settings,
   Sun,
@@ -23,16 +22,6 @@ const roleLabels = {
   disaster_responder: "RESPONDER",
   resident: "RESIDENT",
 };
-
-const themeStorageKey = "aquaguard.theme";
-
-function getStoredDarkMode() {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  return window.localStorage.getItem(themeStorageKey) === "dark";
-}
 
 function renderWeatherIcon(code) {
   switch (Number(code)) {
@@ -65,7 +54,6 @@ export default function Navbar({
 }) {
   const { profile } = useAuth();
   const [weather, setWeather] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(getStoredDarkMode);
 
   useEffect(() => {
     if (!showWeather) {
@@ -121,13 +109,6 @@ export default function Navbar({
       window.clearInterval(interval);
     };
   }, [showWeather]);
-
-  useEffect(() => {
-    const theme = isDarkMode ? "dark" : "light";
-
-    document.documentElement.dataset.aqTheme = theme;
-    window.localStorage.setItem(themeStorageKey, theme);
-  }, [isDarkMode]);
 
   const displayName = profile?.name ?? "AquaGuard User";
   const avatarLetter = displayName.slice(0, 1).toUpperCase() || "A";
@@ -221,19 +202,6 @@ export default function Navbar({
             <Settings size={19} />
           </Link>
         )}
-
-        <button
-          className="topbar-status-icon"
-          type="button"
-          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-          aria-label={
-            isDarkMode ? "Switch to light mode" : "Switch to dark mode"
-          }
-          aria-pressed={isDarkMode}
-          onClick={() => setIsDarkMode((currentValue) => !currentValue)}
-        >
-          {isDarkMode ? <Sun size={19} /> : <Moon size={19} />}
-        </button>
 
         <div className="user-pill">
           <div className="user-info">

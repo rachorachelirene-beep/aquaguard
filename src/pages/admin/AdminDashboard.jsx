@@ -262,27 +262,6 @@ function StationMap() {
   );
 }
 
-function LiveFeedIcon() {
-  return (
-    <svg
-      width="80"
-      height="80"
-      viewBox="0 0 80 80"
-      fill="none"
-      opacity=".18"
-      aria-hidden="true"
-    >
-      <rect width="80" height="80" rx="8" fill="#1f6f8b" />
-      <path
-        d="M10 55 Q20 35 40 40 Q60 45 70 25"
-        stroke="#fff"
-        strokeWidth="3"
-        fill="none"
-      />
-    </svg>
-  );
-}
-
 function AdminDashboardContent() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -519,12 +498,6 @@ function AdminDashboardContent() {
   const yoloRisk = normalizeScore(yolo?.flood_risk);
   const combinedRiskDetails = getCombinedRiskDetails(combinedRisk);
   const stationName = primaryStation?.name ?? "No Station";
-  const waterPct = Math.min(
-    100,
-    hasCurrentReading && criticalLevel > 0
-      ? (currentLevel / criticalLevel) * 100
-      : 0
-  );
   const validHistory = history.filter(
     (reading) => toNumber(reading.level_m, null) != null
   );
@@ -771,60 +744,25 @@ function AdminDashboardContent() {
             </div>
           </section>
 
-          <section className="mid-row">
-            <div className="live-feed-card">
-              <div className="live-badge">
-                <span className="live-dot" />
-                LATEST
-              </div>
-              <div className="level-overlay">
-                <div className="level-box">
-                  LEVEL
-                  <br />
-                  <strong>{formatLevel(currentLevel)}</strong>
-                </div>
-                <div className="threshold-labels">
-                  <span className="th-label critical">CRITICAL</span>
-                  <span className="th-label warning">WARNING</span>
-                  <span className="th-label normal">NORMAL</span>
-                </div>
-                <div className="water-bar-wrap">
-                  <div
-                    className="water-bar"
-                    style={{ height: `${waterPct}%` }}
-                  />
-                </div>
-              </div>
-              <div className="feed-bg">
-                <div className="feed-placeholder">
-                  <LiveFeedIcon />
-                  <p>Live Camera Feed</p>
-                </div>
-              </div>
-              <div className="feed-footer">
-                <span>⌖ {stationName}</span>
-                <div className="feed-actions">
+          <section className="dashboard-alerts-row">
+            <div className="alerts-panel dashboard-alerts-panel">
+              <div className="panel-header">
+                <span>RECENT ALERTS</span>
+                <div className="dashboard-alerts-header-actions">
+                  <span className="badge-active">
+                    {activeAlertCount} ACTIVE
+                  </span>
                   <Link
-                    to="/admin/live-monitoring"
-                    className="icon-btn-sm"
+                    to="/admin/alerts"
+                    className="dashboard-section-link"
                   >
-                    <Play size={15} />
-                    View Live
+                    View all alerts
                   </Link>
                 </div>
               </div>
-            </div>
-
-            <div className="alerts-panel">
-              <div className="panel-header">
-                <span>RECENT ALERTS</span>
-                <span className="badge-active">
-                  {activeAlertCount} ACTIVE
-                </span>
-              </div>
-              <div className="alert-grid">
+              <div className="alert-grid dashboard-alert-grid">
                 {alerts.length === 0 && (
-                  <div className="dashboard-empty">No alerts.</div>
+                  <div className="dashboard-empty">No recent alerts.</div>
                 )}
 
                 {alerts.map((alert) => (
@@ -851,7 +789,7 @@ function AdminDashboardContent() {
             </div>
           </section>
 
-          <section className="bottom-row">
+          <section className="bottom-row dashboard-bottom-row">
             <div className="chart-card">
               <div className="panel-header">
                 <span>History (24h)</span>
@@ -965,6 +903,16 @@ function AdminDashboardContent() {
             </div>
 
             <div className="action-btns">
+              <Link
+                to="/admin/live-monitoring"
+                className="action-btn live-monitoring-btn"
+              >
+                <Play size={23} />
+                OPEN LIVE
+                <br />
+                MONITORING
+              </Link>
+
               <button
                 className="action-btn teal-btn"
                 type="button"
