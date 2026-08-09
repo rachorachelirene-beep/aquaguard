@@ -62,6 +62,8 @@ export default function useRealtimeDetection({
     let pollingInterval = null;
     let pollController = null;
     let pollInFlight = false;
+    let pollFailureLogged = false;
+    let invalidEventLogged = false;
 
     const streamUrl = buildDetectionUrl(
       cameraApiBaseUrl,
@@ -71,7 +73,7 @@ export default function useRealtimeDetection({
     const pollingUrl = buildDetectionUrl(
       cameraApiBaseUrl,
       "/latest_detection",
-      null
+      stationId
     );
 
     function updateTransport(value) {
@@ -84,12 +86,19 @@ export default function useRealtimeDetection({
     }
 
     function acceptDetection(value) {
-      if (active) {
-        setDetectionState({
-          key: connectionKey,
-          value,
-        });
+      if (
+        !active ||
+        (value?.station_id != null &&
+          String(value.station_id) !== String(stationId))
+      ) {
+        return false;
       }
+
+      setDetectionState({
+        key: connectionKey,
+        value,
+      });
+      return true;
     }
 
     function clearFallbackTimeout() {
@@ -124,6 +133,10 @@ export default function useRealtimeDetection({
       const controller =
         new AbortController();
       pollController = controller;
+      const timeout = window.setTimeout(
+        () => controller.abort(),
+        5000
+      );
 
       try {
         const response = await fetch(
@@ -142,18 +155,24 @@ export default function useRealtimeDetection({
         const payload =
           await response.json();
 
+        pollFailureLogged = false;
         acceptDetection(payload);
       } catch (error) {
         if (
           error.name !== "AbortError" &&
           active
         ) {
-          console.warn(
-            "Detection polling unavailable:",
-            error
-          );
+          if (!pollFailureLogged) {
+            console.warn(
+              "Detection polling unavailable:",
+              error
+            );
+            pollFailureLogged = true;
+          }
         }
       } finally {
+        window.clearTimeout(timeout);
+
         if (pollController === controller) {
           pollController = null;
         }
@@ -200,13 +219,17 @@ export default function useRealtimeDetection({
 
         clearFallbackTimeout();
         stopPolling();
+        invalidEventLogged = false;
         acceptDetection(payload);
         updateTransport("live");
       } catch (error) {
-        console.warn(
-          "Invalid detection stream event:",
-          error
-        );
+        if (!invalidEventLogged) {
+          console.warn(
+            "Invalid detection stream event:",
+            error
+          );
+          invalidEventLogged = true;
+        }
         schedulePollingFallback();
       }
     }

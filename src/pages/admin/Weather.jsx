@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -32,6 +33,7 @@ import {
 } from "recharts";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 
 import "./Weather.css";
@@ -42,8 +44,14 @@ const cameraApiBaseUrl = (
   "http://localhost:5000"
 ).replace(/\/+$/, "");
 
+const weatherStaleAfterMs = 30 * 60 * 1000;
+
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const number = Number(value);
 
   return Number.isFinite(number)
@@ -56,6 +64,29 @@ function clamp(value, minimum, maximum) {
   return Math.min(
     maximum,
     Math.max(minimum, value)
+  );
+}
+
+
+function formatMetric(value, decimalPlaces, unit) {
+  const number = toNumber(value, null);
+
+  return number == null
+    ? "--"
+    : `${number.toFixed(decimalPlaces)}${unit}`;
+}
+
+
+function isStaleReading(value) {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return (
+    Number.isFinite(timestamp) &&
+    Date.now() - timestamp > weatherStaleAfterMs
   );
 }
 
@@ -132,6 +163,14 @@ function getWeatherDetails(
       ?.trim()
       .toLowerCase() ?? "";
 
+  if (code < 0 && !condition) {
+    return {
+      icon: Cloud,
+      label: "Condition unavailable",
+      className: "weather-condition-cloudy",
+    };
+  }
+
   if (
     code >= 95 ||
     condition.includes("thunder") ||
@@ -204,8 +243,20 @@ function getWeatherDetails(
 
 
 function getRiskDetails(riskValue) {
+  const numericRisk = toNumber(riskValue, null);
+
+  if (numericRisk == null) {
+    return {
+      percentage: null,
+      label: "Not assessed",
+      description: "No weather-risk assessment is stored for this reading.",
+      className: "weather-risk-low",
+      isNeutral: true,
+    };
+  }
+
   const risk = clamp(
-    toNumber(riskValue),
+    numericRisk,
     0,
     1
   );
@@ -242,7 +293,7 @@ function getRiskDetails(riskValue) {
       percentage,
       label: "High",
       description:
-        "Heavy weather may increase the chance of flooding.",
+        "The stored weather-risk input is elevated and needs monitoring.",
       className:
         "weather-risk-high",
     };
@@ -263,7 +314,7 @@ function getRiskDetails(riskValue) {
     percentage,
     label: "Low",
     description:
-      "Current weather conditions show minimal flood risk.",
+      "The stored weather-risk input is in its lowest assessed band.",
     className:
       "weather-risk-low",
   };
@@ -271,7 +322,7 @@ function getRiskDetails(riskValue) {
 
 
 function getCombinedRiskDetails(risk) {
-  const score = Number(risk?.score);
+  const score = toNumber(risk?.score, null);
 
   if (
     !risk?.assessed ||
@@ -334,6 +385,9 @@ export default function Weather() {
     lastUpdated,
     setLastUpdated,
   ] = useState(null);
+  const riskWarningShownRef = useRef(false);
+  const requestSequenceRef = useRef(0);
+  const inFlightStationRef = useRef("");
 
 
   const selectedStation = useMemo(
@@ -441,11 +495,21 @@ export default function Weather() {
   const loadWeather =
     useCallback(async () => {
       if (!selectedStationId) {
+        requestSequenceRef.current += 1;
         setWeatherRows([]);
         setCombinedRisk(null);
         setLoading(false);
         return;
       }
+
+      const stationId = selectedStationId;
+
+      if (inFlightStationRef.current === stationId) {
+        return;
+      }
+
+      inFlightStationRef.current = stationId;
+      const requestId = ++requestSequenceRef.current;
 
       try {
         setLoading(true);
@@ -473,32 +537,30 @@ export default function Weather() {
             )
             .eq(
               "station_id",
-              selectedStationId
+              stationId
             )
             .order("recorded_at", {
               ascending: false,
             })
             .limit(72);
 
-        const riskPromise = fetch(
+        const riskPromise = fetchJsonWithTimeout(
           `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
-            selectedStationId
+            stationId
           )}`
         )
-          .then(async (response) => {
-            if (!response.ok) {
-              throw new Error(
-                "Combined-risk endpoint is unavailable."
-              );
-            }
-
-            return response.json();
+          .then((payload) => {
+            riskWarningShownRef.current = false;
+            return payload;
           })
           .catch((error) => {
-            console.warn(
-              "Combined risk unavailable:",
-              error
-            );
+            if (!riskWarningShownRef.current) {
+              console.warn(
+                "Combined risk unavailable:",
+                error
+              );
+              riskWarningShownRef.current = true;
+            }
             return null;
           });
 
@@ -514,6 +576,10 @@ export default function Weather() {
           throw error;
         }
 
+        if (requestId !== requestSequenceRef.current) {
+          return;
+        }
+
         setWeatherRows(
           data ?? []
         );
@@ -527,17 +593,25 @@ export default function Weather() {
           new Date().toISOString()
         );
       } catch (error) {
-        console.error(
-          "Weather loading error:",
-          error
-        );
+        if (requestId === requestSequenceRef.current) {
+          console.error(
+            "Weather loading error:",
+            error
+          );
 
-        setErrorMessage(
-          error.message ||
-            "Unable to load weather data."
-        );
+          setErrorMessage(
+            error.message ||
+              "Unable to load weather data."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (inFlightStationRef.current === stationId) {
+          inFlightStationRef.current = "";
+        }
+
+        if (requestId === requestSequenceRef.current) {
+          setLoading(false);
+        }
       }
     }, [selectedStationId]);
 
@@ -574,6 +648,7 @@ export default function Weather() {
       );
 
     return () => {
+      requestSequenceRef.current += 1;
       window.clearTimeout(
         initialLoad
       );
@@ -613,24 +688,30 @@ export default function Weather() {
 
 
   const temperature = toNumber(
-    latestWeather?.temperature
+    latestWeather?.temperature,
+    null
   );
 
   const precipitation = toNumber(
-    latestWeather?.precipitation
+    latestWeather?.precipitation,
+    null
   );
 
   const rainOneHour = toNumber(
-    latestWeather?.rain_1h
+    latestWeather?.rain_1h,
+    null
   );
 
   const rainSixHours = toNumber(
-    latestWeather?.rain_6h
+    latestWeather?.rain_6h,
+    null
   );
 
   const windSpeed = toNumber(
-    latestWeather?.wind_speed
+    latestWeather?.wind_speed,
+    null
   );
+  const weatherIsStale = isStaleReading(latestWeather?.recorded_at);
 
 
   const chartData = useMemo(
@@ -648,28 +729,22 @@ export default function Weather() {
             row.recorded_at,
 
           temperature: toNumber(
-            row.temperature
+            row.temperature,
+            null
           ),
 
           rainfall: toNumber(
             row.rain_1h ??
-              row.precipitation
+              row.precipitation,
+            null
           ),
 
           windSpeed: toNumber(
-            row.wind_speed
+            row.wind_speed,
+            null
           ),
 
-          floodRisk:
-            Math.round(
-              clamp(
-                toNumber(
-                  row.flood_risk
-                ),
-                0,
-                1
-              ) * 100
-            ),
+          floodRisk: toNumber(row.flood_risk, null),
         })),
     [weatherRows]
   );
@@ -678,36 +753,27 @@ export default function Weather() {
   const summary = useMemo(() => {
     if (weatherRows.length === 0) {
       return {
-        highestTemperature: 0,
-        highestWind: 0,
+        highestTemperature: null,
+        highestWind: null,
         highestRisk: null,
       };
     }
 
     const temperatures =
-      weatherRows.map((row) =>
-        toNumber(
-          row.temperature
-        )
-      );
+      weatherRows
+        .map((row) => toNumber(row.temperature, null))
+        .filter((value) => value != null);
 
     const windValues =
-      weatherRows.map((row) =>
-        toNumber(
-          row.wind_speed
-        )
-      );
+      weatherRows
+        .map((row) => toNumber(row.wind_speed, null))
+        .filter((value) => value != null);
 
     const riskValues =
-      weatherRows.map((row) =>
-        clamp(
-          toNumber(
-            row.flood_risk
-          ),
-          0,
-          1
-        )
-      );
+      weatherRows
+        .map((row) => toNumber(row.flood_risk, null))
+        .filter((value) => value != null)
+        .map((value) => clamp(value, 0, 1));
 
     const assessedRiskValues =
       riskValues.filter(
@@ -716,14 +782,10 @@ export default function Weather() {
 
     return {
       highestTemperature:
-        Math.max(
-          ...temperatures
-        ),
+        temperatures.length > 0 ? Math.max(...temperatures) : null,
 
       highestWind:
-        Math.max(
-          ...windValues
-        ),
+        windValues.length > 0 ? Math.max(...windValues) : null,
 
       highestRisk:
         assessedRiskValues.length > 0
@@ -822,7 +884,7 @@ export default function Weather() {
 
           <div className="weather-toolbar-actions">
             <span>
-              Updated:{" "}
+              Page refreshed:{" "}
               {formatDateTime(
                 lastUpdated
               )}
@@ -848,6 +910,16 @@ export default function Weather() {
             </button>
           </div>
         </section>
+
+        {weatherIsStale && (
+          <div className="weather-stale-notice" role="status">
+            <TriangleAlert size={18} />
+            <span>
+              This weather reading is more than 30 minutes old. The values
+              below are the latest saved data, not current conditions.
+            </span>
+          </div>
+        )}
 
         <section
           className={`weather-current-card ${weatherDetails.className}`}
@@ -885,12 +957,7 @@ export default function Weather() {
 
           <div className="weather-current-temperature">
             <strong>
-              {latestWeather
-                ? temperature.toFixed(
-                    1
-                  )
-                : "--"}
-              °C
+              {formatMetric(temperature, 1, " °C")}
             </strong>
 
             <span>Temperature</span>
@@ -909,20 +976,12 @@ export default function Weather() {
               <span>Temperature</span>
 
               <strong>
-                {latestWeather
-                  ? temperature.toFixed(
-                      1
-                    )
-                  : "--"}
-                °C
+                {formatMetric(temperature, 1, " °C")}
               </strong>
 
               <small>
                 Highest:{" "}
-                {summary.highestTemperature.toFixed(
-                  1
-                )}
-                °C
+                {formatMetric(summary.highestTemperature, 1, " °C")}
               </small>
             </div>
           </article>
@@ -938,18 +997,12 @@ export default function Weather() {
               </span>
 
               <strong>
-                {rainOneHour.toFixed(
-                  1
-                )}{" "}
-                mm
+                {formatMetric(rainOneHour, 1, " mm")}
               </strong>
 
               <small>
                 Precipitation:{" "}
-                {precipitation.toFixed(
-                  1
-                )}{" "}
-                mm
+                {formatMetric(precipitation, 1, " mm")}
               </small>
             </div>
           </article>
@@ -965,10 +1018,7 @@ export default function Weather() {
               </span>
 
               <strong>
-                {rainSixHours.toFixed(
-                  1
-                )}{" "}
-                mm
+                {formatMetric(rainSixHours, 1, " mm")}
               </strong>
 
               <small>
@@ -986,18 +1036,12 @@ export default function Weather() {
               <span>Wind speed</span>
 
               <strong>
-                {windSpeed.toFixed(
-                  1
-                )}{" "}
-                km/h
+                {formatMetric(windSpeed, 1, " km/h")}
               </strong>
 
               <small>
                 Highest:{" "}
-                {summary.highestWind.toFixed(
-                  1
-                )}{" "}
-                km/h
+                {formatMetric(summary.highestWind, 1, " km/h")}
               </small>
             </div>
           </article>
@@ -1084,9 +1128,7 @@ export default function Weather() {
             <div className="weather-chart-summary">
               <span>
                 Latest 6H rainfall:{" "}
-                {latestWeather
-                  ? `${rainSixHours.toFixed(1)} mm`
-                  : "--"}
+                {formatMetric(rainSixHours, 1, " mm")}
               </span>
 
               <span>
@@ -1333,39 +1375,24 @@ export default function Weather() {
                           <td>
                             <strong>
                               {toNumber(
-                                row.temperature
-                              ).toFixed(
-                                1
-                              )}
-                              °C
+                                row.temperature,
+                                null
+                              ) == null
+                                ? "--"
+                                : formatMetric(row.temperature, 1, " °C")}
                             </strong>
                           </td>
 
                           <td>
-                            {toNumber(
-                              row.rain_1h
-                            ).toFixed(
-                              1
-                            )}{" "}
-                            mm
+                            {formatMetric(row.rain_1h, 1, " mm")}
                           </td>
 
                           <td>
-                            {toNumber(
-                              row.rain_6h
-                            ).toFixed(
-                              1
-                            )}{" "}
-                            mm
+                            {formatMetric(row.rain_6h, 1, " mm")}
                           </td>
 
                           <td>
-                            {toNumber(
-                              row.wind_speed
-                            ).toFixed(
-                              1
-                            )}{" "}
-                            km/h
+                            {formatMetric(row.wind_speed, 1, " km/h")}
                           </td>
 
                           <td>

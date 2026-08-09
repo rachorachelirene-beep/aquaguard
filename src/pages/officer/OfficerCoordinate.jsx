@@ -3,6 +3,7 @@ import { Pencil, Plus, RefreshCw } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { supabase } from "../../lib/supabase";
 
 function formatDateTime(value) {
@@ -67,6 +68,11 @@ export default function OfficerCoordinate() {
     status: "ongoing",
     notes: "",
   });
+
+  useEscapeKey(() => {
+    setResponseModalMode(null);
+    setAnnouncementModalOpen(false);
+  }, Boolean(responseModalMode || announcementModalOpen));
 
   const loadCoordinateData = useCallback(async () => {
     try {
@@ -416,7 +422,12 @@ export default function OfficerCoordinate() {
 
       {responseModalMode && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Record response activity"
+          >
             <div className="modal-header">
               <span>
                 {responseModalMode === "edit"
@@ -427,6 +438,7 @@ export default function OfficerCoordinate() {
                 className="modal-close"
                 type="button"
                 onClick={() => setResponseModalMode(null)}
+                aria-label="Close response activity dialog"
               >
                 x
               </button>
@@ -492,8 +504,6 @@ export default function OfficerCoordinate() {
                 maxLength="2000"
                 placeholder="Describe the coordination, assistance, or response action taken."
                 required
-                minLength="3"
-                maxLength="160"
               />
 
               <div className="modal-footer">
@@ -519,13 +529,19 @@ export default function OfficerCoordinate() {
 
       {announcementModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="New announcement"
+          >
             <div className="modal-header">
               <span>New Announcement</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setAnnouncementModalOpen(false)}
+                aria-label="Close announcement dialog"
               >
                 x
               </button>
@@ -547,8 +563,8 @@ export default function OfficerCoordinate() {
                   }))
                 }
                 required
-                minLength="10"
-                maxLength="2000"
+                minLength="3"
+                maxLength="160"
               />
 
               <label className="form-label" htmlFor="coordinate-body">
@@ -566,6 +582,8 @@ export default function OfficerCoordinate() {
                   }))
                 }
                 required
+                minLength="10"
+                maxLength="2000"
               />
 
               <div className="modal-footer">

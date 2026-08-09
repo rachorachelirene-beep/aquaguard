@@ -11,7 +11,7 @@ import RoleRedirect from "./components/RoleRedirect";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import SupabaseTest from "./pages/SupabaseTest";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -79,12 +79,8 @@ export default function App() {
           />
 
           <Route
-            path="/supabase-test"
-            element={
-              <ProtectedRoute>
-                <SupabaseTest />
-              </ProtectedRoute>
-            }
+            path="/reset-password"
+            element={<ResetPassword />}
           />
 
           {/* Admin routes */}

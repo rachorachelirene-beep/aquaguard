@@ -39,6 +39,7 @@ export default function ProtectedRoute({
     profile,
     profileError,
     isAccountBlocked,
+    hasRecognizedRole,
     signOut,
   } = useAuth();
   const location = useLocation();
@@ -87,13 +88,19 @@ export default function ProtectedRoute({
     );
   }
 
+  if (!hasRecognizedRole) {
+    return (
+      <ProfileError message="Your account role is not recognized. Contact the administrator." />
+    );
+  }
+
   if (
     allowedRoles.length > 0 &&
     !allowedRoles.includes(profile.role)
   ) {
     return (
       <Navigate
-        to={roleRoutes[profile.role] ?? "/resident/dashboard"}
+        to={roleRoutes[profile.role]}
         replace
       />
     );

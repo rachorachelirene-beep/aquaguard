@@ -9,6 +9,7 @@ export default function RoleRedirect() {
     user,
     profile,
     isAccountBlocked,
+    hasRecognizedRole,
     roleRoute,
     signOut,
   } = useAuth();
@@ -27,7 +28,7 @@ export default function RoleRedirect() {
     );
   }
 
-  if (!user || !profile || isAccountBlocked) {
+  if (!user || !profile || isAccountBlocked || !hasRecognizedRole) {
     return <Navigate to="/login" replace />;
   }
 

@@ -272,6 +272,7 @@ export default function OfficerAlerts() {
               className="form-input officer-filter-select"
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.target.value)}
+              aria-label="Filter alerts by type"
             >
               <option value="all">All Types</option>
               <option value="critical">Critical</option>
@@ -284,6 +285,7 @@ export default function OfficerAlerts() {
               className="form-input officer-filter-select"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
+              aria-label="Filter alerts by status"
             >
               <option value="unresolved">Unresolved</option>
               <option value="all">All Alerts</option>

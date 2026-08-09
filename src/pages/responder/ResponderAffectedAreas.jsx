@@ -22,18 +22,13 @@ function buildLatestReadings(stations, readings) {
 
   return stations.map((station) => {
     const reading = latestByStation.get(String(station.id)) ?? null;
+    const level = toNumber(reading?.level_m, null);
 
     return {
       station,
       reading,
-      status: reading
-        ? getWaterStatus(reading.level_m, station)
-        : {
-            key: "unknown",
-            label: "No data",
-            className: "gray",
-            badge: "badge-gray",
-          },
+      level,
+      status: getWaterStatus(level, station),
     };
   });
 }
@@ -104,7 +99,10 @@ export default function ResponderAffectedAreas() {
       const key = String(reading.station_id);
       const rows = map.get(key) ?? [];
 
-      if (rows.length < 24) {
+      if (
+        rows.length < 24 &&
+        toNumber(reading.level_m, null) != null
+      ) {
         rows.push(reading);
       }
 
@@ -165,8 +163,8 @@ export default function ResponderAffectedAreas() {
                     <span className={`lm-dot ${item.status.className}`} />
                   </div>
                   <strong className={`stat-value ${item.status.className}`}>
-                    {item.reading
-                      ? `${toNumber(item.reading.level_m).toFixed(2)} m`
+                    {item.level != null
+                      ? `${item.level.toFixed(2)} m`
                       : "No data"}
                   </strong>
                   <span>{item.station.location ?? item.station.station_code}</span>
@@ -201,7 +199,7 @@ export default function ResponderAffectedAreas() {
                     <div className="dashboard-empty">No trend data.</div>
                   ) : (
                     history.map((reading) => {
-                      const level = toNumber(reading.level_m);
+                      const level = toNumber(reading.level_m, null);
                       const status = getWaterStatus(level, item.station);
                       const pct = Math.min(100, (level / maxLevel) * 100);
 

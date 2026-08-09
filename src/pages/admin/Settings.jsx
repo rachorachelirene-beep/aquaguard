@@ -250,18 +250,24 @@ export default function Settings() {
 
 
   useEffect(() => {
-    loadSettings();
+    const timeout = window.setTimeout(loadSettings, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [loadSettings]);
 
 
   useEffect(() => {
-    setProfileForm({
-      name: profile?.name ?? "",
-      phone: profile?.phone ?? "",
-      address: profile?.address ?? "",
-      avatar_url:
-        profile?.avatar_url ?? "",
-    });
+    const timeout = window.setTimeout(() => {
+      setProfileForm({
+        name: profile?.name ?? "",
+        phone: profile?.phone ?? "",
+        address: profile?.address ?? "",
+        avatar_url:
+          profile?.avatar_url ?? "",
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [profile]);
 
 

@@ -11,15 +11,22 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { supabase } from "../../lib/supabase";
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function formatLevel(value) {
-  return `${toNumber(value).toFixed(2)} m`;
+  const level = toNumber(value, null);
+
+  return level == null ? "--" : `${level.toFixed(2)} m`;
 }
 
 function formatTrend(value) {
@@ -44,6 +51,31 @@ function formatPercent(value) {
   }
 
   return `${Math.round(number <= 1 ? number * 100 : number)}%`;
+}
+
+function formatScore(value) {
+  const number = toNumber(value, null);
+
+  if (number == null) {
+    return "--";
+  }
+
+  const score = number <= 1 ? number * 100 : number;
+  return `${Math.round(Math.min(100, Math.max(0, score)))}/100`;
+}
+
+function formatFreshness(value, staleAfterMs) {
+  if (!value) {
+    return "No timestamp";
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return "Invalid timestamp";
+  }
+
+  return Date.now() - timestamp > staleAfterMs ? "Stale data" : "Current data";
 }
 
 function formatTime(value) {
@@ -71,6 +103,15 @@ function formatDateTime(value) {
 }
 
 function getStatus(level, warning, critical) {
+  if (level == null) {
+    return {
+      key: "unknown",
+      label: "UNAVAILABLE",
+      className: "blue",
+      sub: "WAITING FOR READING",
+    };
+  }
+
   if (level >= critical) {
     return {
       key: "critical",
@@ -141,7 +182,12 @@ function buildLatestReadings(stations, readings) {
       ...latestByStation.get(String(station.id)),
       station,
     }))
-    .filter((reading) => reading.id);
+    .filter((reading) => reading.id)
+    .sort(
+      (first, second) =>
+        new Date(second.recorded_at).getTime() -
+        new Date(first.recorded_at).getTime()
+    );
 }
 
 function QuickAction({ to, icon: Icon, title, description }) {
@@ -186,6 +232,8 @@ function OfficerDashboardContent() {
     details: "",
   });
 
+  useEscapeKey(() => setModal(null), Boolean(modal));
+
   const loadDashboard = useCallback(async () => {
     setLoadError("");
 
@@ -194,10 +242,8 @@ function OfficerDashboardContent() {
       readingsResult,
       alertsResult,
       unreadAlertsResult,
-      weatherResult,
       announcementsResult,
       advisoriesResult,
-      detectionsResult,
     ] = await Promise.all([
       supabase
         .from("stations")
@@ -224,14 +270,6 @@ function OfficerDashboardContent() {
         .select("id", { count: "exact", head: true })
         .eq("is_read", false),
       supabase
-        .from("weather_readings")
-        .select(
-          "id, station_id, temperature, precipitation, rain_6h, wind_speed, weather_code, condition_text, flood_risk, recorded_at"
-        )
-        .order("recorded_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
         .from("announcements")
         .select("id, title, body, created_at, created_by")
         .order("created_at", { ascending: false })
@@ -241,13 +279,6 @@ function OfficerDashboardContent() {
         .select("id, title, area, level, details, is_active, created_at")
         .order("created_at", { ascending: false })
         .limit(5),
-      supabase
-        .from("yolo_detections")
-        .select(
-          "id, station_id, level_m, confidence, water_coverage, flood_risk, detected_at"
-        )
-        .order("detected_at", { ascending: false })
-        .limit(50),
     ]);
 
     const firstError = [
@@ -255,10 +286,8 @@ function OfficerDashboardContent() {
       readingsResult.error,
       alertsResult.error,
       unreadAlertsResult.error,
-      weatherResult.error,
       announcementsResult.error,
       advisoriesResult.error,
-      detectionsResult.error,
     ].find(Boolean);
 
     if (firstError) {
@@ -273,25 +302,48 @@ function OfficerDashboardContent() {
     );
     const primaryStation =
       nextLatestReadings[0]?.station ?? nextStations[0];
-    const nextDetection = (detectionsResult.data ?? []).find(
-      (detection) =>
-        String(detection.station_id) === String(primaryStation?.id)
-    );
     let nextHistory = [];
+    let nextWeather = null;
+    let nextDetection = null;
 
     if (primaryStation?.id) {
-      const historyResult = await supabase
-        .from("water_levels")
-        .select("id, station_id, level_m, rainfall_mm, recorded_at")
-        .eq("station_id", primaryStation.id)
-        .order("recorded_at", { ascending: false })
-        .limit(24);
+      const [historyResult, weatherResult, detectionResult] = await Promise.all([
+        supabase
+          .from("water_levels")
+          .select("id, station_id, level_m, rainfall_mm, recorded_at")
+          .eq("station_id", primaryStation.id)
+          .order("recorded_at", { ascending: false })
+          .limit(24),
+        supabase
+          .from("weather_readings")
+          .select(
+            "id, station_id, temperature, precipitation, rain_6h, wind_speed, weather_code, condition_text, flood_risk, recorded_at"
+          )
+          .eq("station_id", primaryStation.id)
+          .order("recorded_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("yolo_detections")
+          .select(
+            "id, station_id, level_m, confidence, water_coverage, flood_risk, detected_at"
+          )
+          .eq("station_id", primaryStation.id)
+          .order("detected_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-      if (historyResult.error) {
-        throw historyResult.error;
+      const detailError =
+        historyResult.error ?? weatherResult.error ?? detectionResult.error;
+
+      if (detailError) {
+        throw detailError;
       }
 
       nextHistory = (historyResult.data ?? []).reverse();
+      nextWeather = weatherResult.data ?? null;
+      nextDetection = detectionResult.data ?? null;
     }
 
     setStations(nextStations);
@@ -299,7 +351,7 @@ function OfficerDashboardContent() {
     setAlerts(alertsResult.data ?? []);
     setActiveAlertCount(alertsResult.count ?? 0);
     setUnreadAlerts(unreadAlertsResult.count ?? 0);
-    setWeather(weatherResult.data ?? null);
+    setWeather(nextWeather ?? null);
     setAnnouncements(announcementsResult.data ?? []);
     setAdvisories(advisoriesResult.data ?? []);
     setLatestDetection(nextDetection ?? null);
@@ -308,8 +360,15 @@ function OfficerDashboardContent() {
 
   useEffect(() => {
     let active = true;
+    let loadInFlight = false;
 
     async function boot({ initial = false } = {}) {
+      if (loadInFlight) {
+        return;
+      }
+
+      loadInFlight = true;
+
       if (initial) {
         setLoading(true);
       }
@@ -325,6 +384,8 @@ function OfficerDashboardContent() {
           );
         }
       } finally {
+        loadInFlight = false;
+
         if (active) {
           setLoading(false);
         }
@@ -367,15 +428,25 @@ function OfficerDashboardContent() {
 
   const primary = latestReadings[0] ?? null;
   const primaryStation = primary?.station ?? stations[0] ?? null;
-  const currentLevel = toNumber(
-    latestDetection?.level_m,
-    toNumber(primary?.level_m, null)
-  );
+  const readingLevel = toNumber(primary?.level_m, null);
+  const detectionLevel = toNumber(latestDetection?.level_m, null);
+  const readingTime = new Date(primary?.recorded_at ?? 0).getTime();
+  const detectionTime = new Date(latestDetection?.detected_at ?? 0).getTime();
+  const usesDetection =
+    detectionLevel != null &&
+    (readingLevel == null || detectionTime > readingTime);
+  const currentLevel = usesDetection ? detectionLevel : readingLevel;
+  const currentMeasurementAt =
+    currentLevel == null
+      ? null
+      : usesDetection
+        ? latestDetection?.detected_at
+        : primary?.recorded_at;
   const hasCurrentReading = currentLevel != null;
   const criticalLevel = toNumber(primaryStation?.critical_level, 2.5);
   const warningLevel = toNumber(primaryStation?.warning_level, 2);
   const status = getStatus(
-    hasCurrentReading ? currentLevel : 0,
+    currentLevel,
     warningLevel,
     criticalLevel
   );
@@ -384,11 +455,14 @@ function OfficerDashboardContent() {
   const stationName = primaryStation?.name ?? "No Station";
   const stationLocation = primaryStation?.location ?? "Location unavailable";
   const latestDetectionAt =
-    latestDetection?.detected_at ?? primary?.recorded_at ?? null;
+    latestDetection?.detected_at ?? null;
+  const validHistory = history.filter(
+    (reading) => toNumber(reading.level_m, null) != null
+  );
   const recentTrend =
-    history.length >= 2
-      ? toNumber(history.at(-1)?.level_m) -
-        toNumber(history.at(-2)?.level_m)
+    validHistory.length >= 2
+      ? toNumber(validHistory.at(-1)?.level_m, null) -
+        toNumber(validHistory.at(-2)?.level_m, null)
       : null;
   const historyMax = Math.max(criticalLevel, 1);
 
@@ -396,7 +470,7 @@ function OfficerDashboardContent() {
     const reading = latestReadings.find(
       (item) => String(item.station?.id) === String(station.id)
     );
-    const level = toNumber(reading?.level_m);
+    const level = toNumber(reading?.level_m, null);
     const stationStatus = getStatus(
       level,
       toNumber(station.warning_level, warningLevel),
@@ -509,7 +583,8 @@ function OfficerDashboardContent() {
                 {hasCurrentReading ? formatLevel(currentLevel) : "No data"}
               </div>
               <div className="stat-sub">
-                {stationName} · {stationLocation}
+                {stationName} · {stationLocation} ·{" "}
+                {formatFreshness(currentMeasurementAt, 10 * 60 * 1000)}
               </div>
             </div>
 
@@ -548,7 +623,9 @@ function OfficerDashboardContent() {
                 {formatDateTime(latestDetectionAt)}
               </div>
               <div className="stat-sub">
-                {formatTrend(recentTrend)}
+                {latestDetection
+                  ? `${formatFreshness(latestDetectionAt, 5 * 60 * 1000)} · ${formatTrend(recentTrend)}`
+                  : "No AI detection available"}
               </div>
             </div>
           </section>
@@ -587,7 +664,7 @@ function OfficerDashboardContent() {
                 Coverage {formatPercent(latestDetection?.water_coverage)}
               </small>
               <small>
-                Flood risk {formatPercent(latestDetection?.flood_risk)}
+                Camera evidence score {formatScore(latestDetection?.flood_risk)}
               </small>
             </article>
           </section>
@@ -604,14 +681,14 @@ function OfficerDashboardContent() {
                 </span>
               </div>
               <div className="bar-chart">
-                {history.length === 0 && (
+                {validHistory.length === 0 && (
                   <div className="dashboard-empty">
                     No water-level readings available
                   </div>
                 )}
 
-                {history.map((reading) => {
-                  const level = toNumber(reading.level_m);
+                {validHistory.map((reading) => {
+                  const level = toNumber(reading.level_m, null);
                   const pct = Math.min(100, (level / historyMax) * 100);
                   const barStatus = getStatus(
                     level,
@@ -818,13 +895,19 @@ function OfficerDashboardContent() {
 
       {modal === "announcement" && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Issue announcement"
+          >
             <div className="modal-header">
               <span>Issue Announcement</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setModal(null)}
+                aria-label="Close announcement dialog"
               >
                 x
               </button>
@@ -887,13 +970,19 @@ function OfficerDashboardContent() {
 
       {modal === "advisory" && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Issue evacuation advisory"
+          >
             <div className="modal-header">
               <span>Issue Evacuation Advisory</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setModal(null)}
+                aria-label="Close advisory dialog"
               >
                 x
               </button>

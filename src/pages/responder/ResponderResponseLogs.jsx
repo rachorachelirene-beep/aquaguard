@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { supabase } from "../../lib/supabase";
 import {
   formatDateTime,
@@ -31,6 +32,8 @@ export default function ResponderResponseLogs() {
     status: "ongoing",
     notes: "",
   });
+
+  useEscapeKey(() => setModal(null), Boolean(modal));
 
   const loadData = useCallback(async () => {
     try {
@@ -374,13 +377,19 @@ export default function ResponderResponseLogs() {
 
       {modal && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label={modal === "update" ? "Update response status" : "New response log"}
+          >
             <div className="modal-header">
               <span>{modal === "update" ? "Update Status" : "New Response Log"}</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setModal(null)}
+                aria-label="Close response log dialog"
               >
                 x
               </button>

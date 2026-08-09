@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -35,6 +36,10 @@ import "./WaterLevelHistory.css";
 
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const number = Number(value);
 
   return Number.isFinite(number)
@@ -44,12 +49,16 @@ function toNumber(value, fallback = 0) {
 
 
 function formatLevel(value) {
-  return `${toNumber(value).toFixed(2)} m`;
+  const level = toNumber(value, null);
+
+  return level == null ? "--" : `${level.toFixed(2)} m`;
 }
 
 
 function formatRainfall(value) {
-  return `${toNumber(value).toFixed(1)} mm`;
+  const rainfall = toNumber(value, null);
+
+  return rainfall == null ? "--" : `${rainfall.toFixed(1)} mm`;
 }
 
 
@@ -95,7 +104,15 @@ function formatChartTime(value) {
 
 
 function getReadingStatus(level, station) {
-  const numericLevel = toNumber(level);
+  const numericLevel = toNumber(level, null);
+
+  if (numericLevel == null) {
+    return {
+      key: "unknown",
+      label: "Unavailable",
+      className: "history-status-unknown",
+    };
+  }
 
   const warningLevel = toNumber(
     station?.warning_level,
@@ -171,6 +188,7 @@ export default function WaterLevelHistory({
 
   const [searchText, setSearchText] =
     useState("");
+  const historyRequestRef = useRef(0);
 
 
   const selectedStation = useMemo(
@@ -283,9 +301,13 @@ export default function WaterLevelHistory({
 
   const loadHistory = useCallback(async () => {
     if (!selectedStationId) {
+      historyRequestRef.current += 1;
       setReadings([]);
       return;
     }
+
+    const stationId = selectedStationId;
+    const requestId = ++historyRequestRef.current;
 
     try {
       setHistoryLoading(true);
@@ -304,7 +326,7 @@ export default function WaterLevelHistory({
         )
         .eq(
           "station_id",
-          selectedStationId
+          stationId
         )
         .order("recorded_at", {
           ascending: false,
@@ -331,19 +353,27 @@ export default function WaterLevelHistory({
         throw error;
       }
 
+      if (requestId !== historyRequestRef.current) {
+        return;
+      }
+
       setReadings(data ?? []);
     } catch (error) {
-      console.error(
-        "Water history loading error:",
-        error
-      );
+      if (requestId === historyRequestRef.current) {
+        console.error(
+          "Water history loading error:",
+          error
+        );
 
-      setErrorMessage(
-        error.message ||
-          "Unable to load water-level history."
-      );
+        setErrorMessage(
+          error.message ||
+            "Unable to load water-level history."
+        );
+      }
     } finally {
-      setHistoryLoading(false);
+      if (requestId === historyRequestRef.current) {
+        setHistoryLoading(false);
+      }
     }
   }, [
     selectedStationId,
@@ -362,29 +392,19 @@ export default function WaterLevelHistory({
   useEffect(() => {
     const timeout = window.setTimeout(loadHistory, 0);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      historyRequestRef.current += 1;
+      window.clearTimeout(timeout);
+    };
   }, [loadHistory]);
 
 
   const statistics = useMemo(() => {
-    if (readings.length === 0) {
-      return {
-        latest: 0,
-        average: 0,
-        highest: 0,
-        rainfall: 0,
-        trend: 0,
-      };
-    }
-
-    const levels = readings.map(
-      (reading) =>
-        toNumber(reading.level_m)
+    const validLevelRows = readings.filter(
+      (reading) => toNumber(reading.level_m, null) != null
     );
-
-    const rainfallValues = readings.map(
-      (reading) =>
-        toNumber(reading.rainfall_mm)
+    const levels = validLevelRows.map((reading) =>
+      toNumber(reading.level_m, null)
     );
 
     const totalLevel = levels.reduce(
@@ -392,22 +412,21 @@ export default function WaterLevelHistory({
       0
     );
 
-    const latestLevel = levels[0] ?? 0;
-
-    const previousLevel =
-      levels.length > 1
-        ? levels[1]
-        : latestLevel;
+    const latestLevel = levels[0] ?? null;
+    const previousLevel = levels[1] ?? null;
 
     return {
       latest: latestLevel,
       average:
-        totalLevel /
-        Math.max(1, levels.length),
-      highest: Math.max(...levels),
-      rainfall:
-        rainfallValues[0] ?? 0,
-      trend: latestLevel - previousLevel,
+        levels.length > 0 ? totalLevel / levels.length : null,
+      highest: levels.length > 0 ? Math.max(...levels) : null,
+      rainfall: toNumber(readings[0]?.rainfall_mm, null),
+      trend:
+        latestLevel != null && previousLevel != null
+          ? latestLevel - previousLevel
+          : null,
+      validReadingCount: levels.length,
+      latestRecordedAt: validLevelRows[0]?.recorded_at ?? null,
     };
   }, [readings]);
 
@@ -416,13 +435,13 @@ export default function WaterLevelHistory({
     () =>
       [...readings]
         .reverse()
+        .filter((reading) => toNumber(reading.level_m, null) != null)
         .map((reading) => ({
           id: reading.id,
-          level: toNumber(
-            reading.level_m
-          ),
+          level: toNumber(reading.level_m, null),
           rainfall: toNumber(
-            reading.rainfall_mm
+            reading.rainfall_mm,
+            null
           ),
           recordedAt:
             reading.recorded_at,
@@ -651,10 +670,9 @@ export default function WaterLevelHistory({
               </strong>
 
               <small>
-                {readings[0]
+                {statistics.latestRecordedAt
                   ? formatDateTime(
-                      readings[0]
-                        .recorded_at
+                      statistics.latestRecordedAt
                     )
                   : "No reading"}
               </small>
@@ -675,8 +693,8 @@ export default function WaterLevelHistory({
               </strong>
 
               <small>
-                {readings.length} reading
-                {readings.length === 1
+                {statistics.validReadingCount} valid reading
+                {statistics.validReadingCount === 1
                   ? ""
                   : "s"}
               </small>
@@ -717,14 +735,9 @@ export default function WaterLevelHistory({
               </strong>
 
               <small>
-                Trend{" "}
-                {statistics.trend >= 0
-                  ? "+"
-                  : ""}
-                {statistics.trend.toFixed(
-                  2
-                )}{" "}
-                m
+                {statistics.trend == null
+                  ? "Trend unavailable"
+                  : `Trend ${statistics.trend >= 0 ? "+" : ""}${statistics.trend.toFixed(2)} m`}
               </small>
             </div>
           </article>

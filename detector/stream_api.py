@@ -1136,7 +1136,9 @@ def update_camera_state(
     public_error = (
         None
         if connected
-        else error or "Camera connection unavailable."
+        else sanitize_public_error(
+            error or "Camera connection unavailable."
+        )
     )
 
     with state_lock:
@@ -2188,10 +2190,10 @@ def health():
             "latest_frame_at": latest_frame_at,
             "latest_detection_at": latest_detection_at,
             "detection_stream_available": True,
-            "camera_error": camera_error,
+            "camera_error": sanitize_public_error(camera_error),
             "yolo_enabled": YOLO_ENABLED,
             "yolo_loaded": yolo_model is not None,
-            "yolo_error": yolo_error,
+            "yolo_error": sanitize_public_error(yolo_error),
             "gauge_enabled": GAUGE_ENABLED,
             "gauge_points": GAUGE_POINTS,
             "gauge_tick_interval_m": GAUGE_TICK_INTERVAL_M,
@@ -2200,7 +2202,7 @@ def health():
             "supabase_connected": (
                 supabase is not None
             ),
-            "supabase_error": supabase_error,
+            "supabase_error": sanitize_public_error(supabase_error),
             "alert_cooldown_seconds": (
                 ALERT_COOLDOWN_SECONDS
             ),
@@ -2220,6 +2222,10 @@ def weather_status():
         service_status["last_error"] = (
             "Supabase connection is unavailable."
         )
+
+    service_status["last_error"] = sanitize_public_error(
+        service_status.get("last_error")
+    )
 
     return jsonify(
         {
@@ -2243,8 +2249,7 @@ def get_latest_detection():
         requested_station_id
     )
 
-    with state_lock:
-        response_data = dict(latest_detection)
+    response_data = get_public_detection_snapshot()
 
     response_data.update(
         {
@@ -2253,13 +2258,13 @@ def get_latest_detection():
             "active_camera_source": active_camera_source,
             "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "latest_frame_at": latest_frame_at,
-            "camera_error": camera_error,
+            "camera_error": sanitize_public_error(camera_error),
             "yolo_loaded": yolo_model is not None,
-            "yolo_error": yolo_error,
+            "yolo_error": sanitize_public_error(yolo_error),
             "supabase_connected": (
                 supabase is not None
             ),
-            "supabase_error": supabase_error,
+            "supabase_error": sanitize_public_error(supabase_error),
         }
     )
 

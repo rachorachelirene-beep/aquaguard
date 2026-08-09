@@ -94,6 +94,11 @@ const roleMenus = {
       icon: ClipboardList,
     },
     {
+      label: "Response Logs",
+      to: "/responder/response-logs",
+      icon: FileText,
+    },
+    {
       label: "Water Level History",
       to: "/responder/water-level-history",
       icon: History,
@@ -185,7 +190,7 @@ export default function Sidebar({
         <div className="sidebar-footer">
           <div className="system-status">
             <span className="dot green" />
-            <strong>SYSTEM ONLINE</strong>
+            <strong>ACCOUNT ACTIVE</strong>
           </div>
 
           <div className="status-time">{currentTime}</div>

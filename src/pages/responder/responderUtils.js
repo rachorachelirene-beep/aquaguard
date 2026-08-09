@@ -12,7 +12,13 @@ export function formatDateTime(value) {
     return "--";
   }
 
-  return new Date(value).toLocaleString([], {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return date.toLocaleString([], {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -26,7 +32,13 @@ export function formatShortTime(value) {
     return "--";
   }
 
-  return new Date(value).toLocaleString([], {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return date.toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -35,9 +47,18 @@ export function formatShortTime(value) {
 }
 
 export function getWaterStatus(level, station) {
-  const numericLevel = toNumber(level);
+  const numericLevel = toNumber(level, null);
   const warningLevel = toNumber(station?.warning_level, 2);
   const criticalLevel = toNumber(station?.critical_level, 2.5);
+
+  if (numericLevel == null) {
+    return {
+      key: "unknown",
+      label: "No data",
+      className: "gray",
+      badge: "badge-gray",
+    };
+  }
 
   if (numericLevel >= criticalLevel) {
     return {

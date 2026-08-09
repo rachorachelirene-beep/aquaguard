@@ -10,6 +10,7 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { supabase } from "../../lib/supabase";
 
 function formatDateTime(value) {
@@ -55,6 +56,11 @@ export default function OfficerEvacuationAdvisories() {
     level: "advisory",
     details: "",
   });
+
+  useEscapeKey(() => {
+    setModalOpen(false);
+    setAdvisoryToDelete(null);
+  }, Boolean(modalOpen || advisoryToDelete));
 
   const loadAdvisories = useCallback(async () => {
     try {
@@ -442,13 +448,19 @@ export default function OfficerEvacuationAdvisories() {
 
       {modalOpen && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Issue evacuation advisory"
+          >
             <div className="modal-header">
               <span>Issue Evacuation Advisory</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setModalOpen(false)}
+                aria-label="Close advisory dialog"
               >
                 x
               </button>
@@ -558,13 +570,19 @@ export default function OfficerEvacuationAdvisories() {
 
       {advisoryToDelete && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete evacuation advisory"
+          >
             <div className="modal-header">
               <span>Delete Advisory</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setAdvisoryToDelete(null)}
+                aria-label="Close delete advisory dialog"
               >
                 x
               </button>

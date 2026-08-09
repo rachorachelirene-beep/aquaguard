@@ -589,6 +589,12 @@
   background: #fef2f2;
 }
 
+.reports-status-neutral {
+  border-color: #cbd5e1;
+  color: #475569;
+  background: #f1f5f9;
+}
+
 .reports-table-empty {
   padding: 44px !important;
   color: #718096 !important;

@@ -10,6 +10,7 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { supabase } from "../../lib/supabase";
 
 function formatDateTime(value) {
@@ -41,6 +42,11 @@ export default function OfficerAnnouncements() {
     title: "",
     body: "",
   });
+
+  useEscapeKey(() => {
+    setModalMode(null);
+    setAnnouncementToDelete(null);
+  }, Boolean(modalMode || announcementToDelete));
 
   const loadAnnouncements = useCallback(async () => {
     try {
@@ -344,7 +350,12 @@ export default function OfficerAnnouncements() {
 
       {modalMode && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label={modalMode === "edit" ? "Edit announcement" : "New announcement"}
+          >
             <div className="modal-header">
               <span>
                 {modalMode === "edit"
@@ -355,6 +366,7 @@ export default function OfficerAnnouncements() {
                 className="modal-close"
                 type="button"
                 onClick={() => setModalMode(null)}
+                aria-label="Close announcement dialog"
               >
                 x
               </button>
@@ -426,13 +438,19 @@ export default function OfficerAnnouncements() {
 
       {announcementToDelete && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete announcement"
+          >
             <div className="modal-header">
               <span>Delete Announcement</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setAnnouncementToDelete(null)}
+                aria-label="Close delete announcement dialog"
               >
                 x
               </button>

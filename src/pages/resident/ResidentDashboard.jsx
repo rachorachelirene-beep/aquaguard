@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, CloudRain, ShieldAlert, Waves } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useRealtimeDetection from "../../hooks/useRealtimeDetection";
+import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 import {
   decodeReminderIcon,
@@ -14,7 +15,6 @@ import {
   getCombinedRiskView,
   getSeverityBadge,
   getWaterStatus,
-  newestTimestamp,
   toNullableNumber,
 } from "./residentUtils";
 
@@ -22,16 +22,29 @@ const cameraApiBaseUrl = (
   import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000"
 ).replace(/\/+$/, "");
 
-function firstValidNumber(...values) {
-  for (const value of values) {
-    const number = toNullableNumber(value);
+function pickNewestMeasurement(...candidates) {
+  let newest = null;
 
-    if (number != null) {
-      return number;
+  for (const candidate of candidates) {
+    const value = toNullableNumber(candidate?.value);
+
+    if (value == null) {
+      continue;
+    }
+
+    const time = new Date(candidate?.recordedAt ?? 0).getTime();
+    const normalizedTime = Number.isFinite(time) ? time : 0;
+
+    if (!newest || normalizedTime > newest.time) {
+      newest = {
+        value,
+        recordedAt: candidate?.recordedAt ?? null,
+        time: normalizedTime,
+      };
     }
   }
 
-  return null;
+  return newest;
 }
 
 export default function ResidentDashboard() {
@@ -48,8 +61,17 @@ export default function ResidentDashboard() {
   const [remindersUnavailable, setRemindersUnavailable] = useState(false);
   const [cachedRisk, setCachedRisk] = useState(null);
   const [riskServiceUnavailable, setRiskServiceUnavailable] = useState(false);
+  const loadInFlightRef = useRef(false);
+  const riskWarningShownRef = useRef(false);
+  const remindersWarningShownRef = useRef(false);
 
   const loadDashboard = useCallback(async ({ showLoading = true } = {}) => {
+    if (loadInFlightRef.current) {
+      return;
+    }
+
+    loadInFlightRef.current = true;
+
     if (showLoading) {
       setLoading(true);
     }
@@ -136,7 +158,15 @@ export default function ResidentDashboard() {
       }
 
       if (remindersResult.error) {
-        console.warn("Resident safety reminders unavailable:", remindersResult.error);
+        if (!remindersWarningShownRef.current) {
+          console.warn(
+            "Resident safety reminders unavailable:",
+            remindersResult.error
+          );
+          remindersWarningShownRef.current = true;
+        }
+      } else {
+        remindersWarningShownRef.current = false;
       }
 
       const nextStations = stationsResult.data ?? [];
@@ -159,28 +189,20 @@ export default function ResidentDashboard() {
       let nextRiskUnavailable = false;
 
       if (primaryStationId != null) {
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 5000);
-
         try {
-          const response = await fetch(
+          const payload = await fetchJsonWithTimeout(
             `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
               primaryStationId
-            )}`,
-            { signal: controller.signal }
+            )}`
           );
-
-          if (!response.ok) {
-            throw new Error("Flood-risk service returned an error.");
-          }
-
-          const payload = await response.json();
           nextRisk = payload?.combined_risk ?? null;
+          riskWarningShownRef.current = false;
         } catch (error) {
-          console.warn("Resident combined flood risk unavailable:", error);
+          if (!riskWarningShownRef.current) {
+            console.warn("Resident combined flood risk unavailable:", error);
+            riskWarningShownRef.current = true;
+          }
           nextRiskUnavailable = true;
-        } finally {
-          window.clearTimeout(timeout);
         }
       }
 
@@ -201,6 +223,7 @@ export default function ResidentDashboard() {
         "Unable to load current flood information. Check your connection and try again."
       );
     } finally {
+      loadInFlightRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -256,32 +279,41 @@ export default function ResidentDashboard() {
     (!realtimeDetection.station_id ||
       String(realtimeDetection.station_id) === selectedStationId);
   const currentDetection = realtimeMatchesStation ? realtimeDetection : null;
-  const currentLevel = firstValidNumber(
-    currentDetection?.level_m,
-    primaryDetection?.level_m,
-    primaryReading?.level_m
+  const currentMeasurement = pickNewestMeasurement(
+    {
+      value: currentDetection?.level_m,
+      recordedAt: currentDetection?.detected_at,
+    },
+    {
+      value: primaryDetection?.level_m,
+      recordedAt: primaryDetection?.detected_at,
+    },
+    {
+      value: primaryReading?.level_m,
+      recordedAt: primaryReading?.recorded_at,
+    }
   );
+  const currentLevel = currentMeasurement?.value ?? null;
   const waterStatus = getWaterStatus(currentLevel, primaryStation);
   const combinedRisk = currentDetection?.combined_risk ?? cachedRisk;
   const riskView = getCombinedRiskView(combinedRisk);
   const latestAlert = alerts[0] ?? null;
   const latestAdvisory = advisories[0] ?? null;
-  const lastUpdated = newestTimestamp(
-    currentDetection?.detected_at,
-    primaryDetection?.detected_at,
-    primaryReading?.recorded_at,
-    currentWeather?.recorded_at
-  );
+  const lastUpdated = currentMeasurement?.recordedAt ?? null;
+  const waterAge = getAgeMinutes(lastUpdated);
+  const waterIsStale = waterAge != null && waterAge > 10;
   const weatherAge = getAgeMinutes(currentWeather?.recorded_at);
   const weatherIsStale = weatherAge != null && weatherAge > 30;
   const monitoringMessage =
-    transport === "live"
+    currentLevel == null
+      ? "Current water-level monitoring is unavailable."
+      : waterIsStale
+        ? "The latest saved water-level reading is more than 10 minutes old."
+        : transport === "live"
       ? "Live monitoring updates are connected."
       : transport === "polling"
-        ? "Showing current monitoring updates."
-        : currentLevel == null
-          ? "Current water-level monitoring is unavailable."
-          : "Live updates are temporarily unavailable; showing the latest saved reading.";
+        ? "Showing monitoring updates via fallback polling."
+        : "Live updates are temporarily unavailable; showing the latest saved reading.";
 
   return (
     <DashboardLayout

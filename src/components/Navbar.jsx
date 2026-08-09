@@ -73,23 +73,43 @@ export default function Navbar({
     }
 
     let active = true;
+    let requestInFlight = false;
+    let warningShown = false;
 
     async function loadWeather() {
-      const { data, error } = await supabase
-        .from("weather_readings")
-        .select(
-          "temperature, condition_text, weather_code, flood_risk, recorded_at"
-        )
-        .order("recorded_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!active) {
+      if (!active || requestInFlight) {
         return;
       }
 
-      if (!error) {
+      requestInFlight = true;
+
+      try {
+        const { data, error } = await supabase
+          .from("weather_readings")
+          .select(
+            "temperature, condition_text, weather_code, flood_risk, recorded_at"
+          )
+          .order("recorded_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!active) {
+          return;
+        }
+
         setWeather(data ?? null);
+        warningShown = false;
+      } catch (error) {
+        if (active && !warningShown) {
+          console.warn("Navbar weather unavailable:", error);
+          warningShown = true;
+        }
+      } finally {
+        requestInFlight = false;
       }
     }
 
@@ -156,6 +176,7 @@ export default function Navbar({
             to="/admin/weather"
             className="weather-pill"
             title="Weather Forecast"
+            aria-label="Open weather monitoring"
           >
             {renderWeatherIcon(weather?.weather_code)}
             <span>
@@ -184,6 +205,7 @@ export default function Navbar({
           }
           className="icon-btn notif-btn"
           title="Alerts"
+          aria-label="Open alerts"
         >
           <Bell size={19} />
           {unreadAlerts > 0 && <span className="notif-dot" />}
@@ -194,6 +216,7 @@ export default function Navbar({
             to="/admin/settings"
             className="icon-btn"
             title="Settings"
+            aria-label="Open settings"
           >
             <Settings size={19} />
           </Link>

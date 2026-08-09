@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { supabase } from "../../lib/supabase";
 
 import "./MonitoringStations.css";
@@ -43,6 +44,10 @@ const emptyForm = {
 
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const number = Number(value);
 
   return Number.isFinite(number)
@@ -89,7 +94,9 @@ function parseOptionalCoordinate(
 
 
 function formatLevel(value) {
-  return `${toNumber(value).toFixed(2)} m`;
+  const level = toNumber(value, null);
+
+  return level == null ? "--" : `${level.toFixed(2)} m`;
 }
 
 
@@ -169,7 +176,7 @@ function getWaterStatus(
   warningLevel,
   criticalLevel
 ) {
-  const currentLevel = toNumber(level);
+  const currentLevel = toNumber(level, null);
   const warning = toNumber(
     warningLevel,
     2
@@ -178,6 +185,13 @@ function getWaterStatus(
     criticalLevel,
     2.5
   );
+
+  if (currentLevel == null) {
+    return {
+      label: "Unavailable",
+      className: "water-status-unavailable",
+    };
+  }
 
   if (currentLevel >= critical) {
     return {
@@ -239,6 +253,14 @@ export default function MonitoringStations() {
 
   const [form, setForm] =
     useState(emptyForm);
+
+  useEscapeKey(() => {
+    if (stationToDelete) {
+      setStationToDelete(null);
+    } else {
+      closeModal();
+    }
+  }, Boolean(modalMode || stationToDelete));
 
 
   const loadStations =
@@ -480,12 +502,14 @@ export default function MonitoringStations() {
             String(station.id)
           );
 
-        if (!reading) {
+        const currentLevel = toNumber(reading?.level_m, null);
+
+        if (currentLevel == null) {
           return false;
         }
 
         return (
-          toNumber(reading.level_m) >=
+          currentLevel >=
           toNumber(
             station.warning_level,
             2
@@ -1676,12 +1700,13 @@ export default function MonitoringStations() {
               className="stations-delete-modal"
               role="dialog"
               aria-modal="true"
+              aria-labelledby="delete-station-title"
             >
               <div className="stations-delete-icon">
                 <Trash2 size={25} />
               </div>
 
-              <h3>
+              <h3 id="delete-station-title">
                 Delete monitoring station?
               </h3>
 

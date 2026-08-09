@@ -5,6 +5,10 @@ import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { supabase } from "../../lib/supabase";
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -35,6 +39,23 @@ function formatPercent(value) {
   }
 
   return `${Math.round(numeric <= 1 ? numeric * 100 : numeric)}%`;
+}
+
+function formatScore(value) {
+  const numeric = toNumber(value, null);
+
+  if (numeric == null) {
+    return "--";
+  }
+
+  const score = numeric <= 1 ? numeric * 100 : numeric;
+  return `${Math.round(Math.min(100, Math.max(0, score)))}/100`;
+}
+
+function formatRainfall(value) {
+  const numeric = toNumber(value, null);
+
+  return numeric == null ? "--" : numeric.toFixed(1);
 }
 
 function getStatus(level, station) {
@@ -182,7 +203,15 @@ export default function OfficerReports() {
       const reading = latestByStation.get(String(station.id)) ?? null;
       const detection =
         latestDetectionByStation.get(String(station.id)) ?? null;
-      const currentLevel = detection?.level_m ?? reading?.level_m;
+      const readingLevel = toNumber(reading?.level_m, null);
+      const detectionLevel = toNumber(detection?.level_m, null);
+      const readingTime = new Date(reading?.recorded_at ?? 0).getTime();
+      const detectionTime = new Date(detection?.detected_at ?? 0).getTime();
+      const currentLevel =
+        detectionLevel != null &&
+        (readingLevel == null || detectionTime > readingTime)
+          ? detectionLevel
+          : readingLevel;
       const status = getStatus(currentLevel, station);
 
       return {
@@ -232,7 +261,7 @@ export default function OfficerReports() {
       "Rainfall (mm)",
       "AI Confidence",
       "Water Coverage",
-      "Flood Risk",
+      "Camera Score",
       "Latest Detection",
       "Last Reading",
       "Status",
@@ -240,10 +269,10 @@ export default function OfficerReports() {
     const csvRows = filteredRows.map((row) => [
       row.station.name,
       row.currentLevel != null ? toNumber(row.currentLevel).toFixed(2) : "",
-      row.reading ? toNumber(row.reading.rainfall_mm).toFixed(1) : "",
+      row.reading ? formatRainfall(row.reading.rainfall_mm) : "",
       formatPercent(row.detection?.confidence),
       formatPercent(row.detection?.water_coverage),
-      formatPercent(row.detection?.flood_risk),
+      formatScore(row.detection?.flood_risk),
       row.detection ? formatDateTime(row.detection.detected_at) : "",
       row.reading ? formatDateTime(row.reading.recorded_at) : "",
       row.status.label,
@@ -348,6 +377,7 @@ export default function OfficerReports() {
               className="form-input officer-filter-select"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
+              aria-label="Filter reports by water-level status"
             >
               <option value="all">All Status</option>
               <option value="critical">Critical</option>
@@ -395,7 +425,7 @@ export default function OfficerReports() {
                   <th>Rainfall (mm)</th>
                   <th>AI Confidence</th>
                   <th>Coverage</th>
-                  <th>Flood Risk</th>
+                  <th>Camera Score</th>
                   <th>Latest Detection</th>
                   <th>Last Reading</th>
                   <th>Status</th>
@@ -431,12 +461,12 @@ export default function OfficerReports() {
                       </td>
                       <td>
                         {row.reading
-                          ? toNumber(row.reading.rainfall_mm).toFixed(1)
+                          ? formatRainfall(row.reading.rainfall_mm)
                           : "--"}
                       </td>
                       <td>{formatPercent(row.detection?.confidence)}</td>
                       <td>{formatPercent(row.detection?.water_coverage)}</td>
-                      <td>{formatPercent(row.detection?.flood_risk)}</td>
+                      <td>{formatScore(row.detection?.flood_risk)}</td>
                       <td>
                         {row.detection
                           ? formatDateTime(row.detection.detected_at)

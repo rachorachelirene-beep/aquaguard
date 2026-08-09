@@ -19,8 +19,6 @@ export const roleRoutes = {
   resident: "/resident/dashboard",
 };
 
-const blockedStatuses = new Set(["inactive", "suspended"]);
-
 async function fetchProfile(userId) {
   const { data, error } = await supabase
     .from("profiles")
@@ -145,8 +143,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(() => {
-    const status = profile?.status ?? null;
-    const isAccountBlocked = blockedStatuses.has(status);
+    const status = String(profile?.status ?? "").toLowerCase();
+    const isAccountBlocked = Boolean(profile) && status !== "active";
+    const hasRecognizedRole = Boolean(
+      profile && Object.hasOwn(roleRoutes, profile.role)
+    );
 
     return {
       session,
@@ -156,7 +157,8 @@ export function AuthProvider({ children }) {
       profileError,
       isAuthenticated: Boolean(user),
       isAccountBlocked,
-      roleRoute: roleRoutes[profile?.role] ?? "/resident/dashboard",
+      hasRecognizedRole,
+      roleRoute: roleRoutes[profile?.role] ?? "/login",
       refreshProfile,
       signOut,
     };

@@ -17,6 +17,7 @@ export default function GuestRoute({ children }) {
     user,
     profile,
     isAccountBlocked,
+    hasRecognizedRole,
     roleRoute,
     signOut,
   } = useAuth();
@@ -31,7 +32,7 @@ export default function GuestRoute({ children }) {
     return <GuestRouteLoading />;
   }
 
-  if (user && profile && !isAccountBlocked) {
+  if (user && profile && !isAccountBlocked && hasRecognizedRole) {
     return <Navigate to={roleRoute} replace />;
   }
 

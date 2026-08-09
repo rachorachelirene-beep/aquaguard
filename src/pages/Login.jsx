@@ -78,10 +78,7 @@ export default function Login() {
         throw new Error("User profile was not found.");
       }
 
-      if (
-        profile.status === "inactive" ||
-        profile.status === "suspended"
-      ) {
+      if (String(profile.status ?? "").toLowerCase() !== "active") {
         await supabase.auth.signOut();
 
         throw new Error(
@@ -89,10 +86,25 @@ export default function Login() {
         );
       }
 
-      const destination =
-        roleRoutes[profile.role] ?? "/resident/dashboard";
+      const destination = roleRoutes[profile.role];
 
-      navigate(destination, {
+      if (!destination) {
+        await supabase.auth.signOut();
+        throw new Error(
+          "Your account role is not recognized. Contact the administrator."
+        );
+      }
+
+      const requestedLocation = location.state?.from;
+      const rolePrefix = destination.replace(/dashboard$/, "");
+      const requestedPath = requestedLocation?.pathname ?? "";
+      const safeDestination = requestedPath.startsWith(rolePrefix)
+        ? `${requestedPath}${requestedLocation?.search ?? ""}${
+            requestedLocation?.hash ?? ""
+          }`
+        : destination;
+
+      navigate(safeDestination, {
         replace: true,
       });
     } catch (error) {

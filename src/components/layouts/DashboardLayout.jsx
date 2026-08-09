@@ -41,27 +41,47 @@ export default function DashboardLayout({
 
   useEffect(() => {
     let active = true;
+    let requestInFlight = false;
+    let warningShown = false;
 
     async function loadUnreadAlertCount() {
-      let query = supabase
-        .from("alerts")
-        .select("id", { count: "exact", head: true });
-
-      query =
-        profile?.role === "resident"
-          ? query
-              .eq("is_resolved", false)
-              .in("type", ["warning", "critical"])
-          : query.eq("is_read", false);
-
-      const { count, error } = await query;
-
-      if (!active) {
+      if (!active || requestInFlight) {
         return;
       }
 
-      if (!error) {
+      requestInFlight = true;
+
+      try {
+        let query = supabase
+          .from("alerts")
+          .select("id", { count: "exact", head: true });
+
+        query =
+          profile?.role === "resident"
+            ? query
+                .eq("is_resolved", false)
+                .in("type", ["warning", "critical"])
+            : query.eq("is_read", false);
+
+        const { count, error } = await query;
+
+        if (error) {
+          throw error;
+        }
+
+        if (!active) {
+          return;
+        }
+
         setUnreadAlerts(count ?? 0);
+        warningShown = false;
+      } catch (error) {
+        if (active && !warningShown) {
+          console.warn("Alert count unavailable:", error);
+          warningShown = true;
+        }
+      } finally {
+        requestInFlight = false;
       }
     }
 
@@ -113,7 +133,7 @@ export default function DashboardLayout({
           onToggleSidebar={() =>
             setSidebarOpen((isOpen) => !isOpen)
           }
-          showSearch={showAdminTools}
+          showSearch={false}
           showWeather={showAdminTools}
           unreadAlerts={unreadAlerts}
         />

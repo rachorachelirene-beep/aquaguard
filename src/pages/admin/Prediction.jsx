@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -30,6 +31,7 @@ import {
 } from "recharts";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 
 import "./Prediction.css";
@@ -42,6 +44,10 @@ const cameraApiBaseUrl = (
 
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const number = Number(value);
 
   return Number.isFinite(number)
@@ -142,8 +148,25 @@ function getRiskDetails(riskPercent) {
 }
 
 
+function formatFreshness(value, staleAfterMs) {
+  if (!value) {
+    return "No measurement timestamp";
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return "Invalid measurement timestamp";
+  }
+
+  return Date.now() - timestamp > staleAfterMs
+    ? `Stale reading · ${formatDateTime(value)}`
+    : `Measured ${formatDateTime(value)}`;
+}
+
+
 function getCombinedRiskDetails(risk) {
-  const score = Number(risk?.score);
+  const score = toNumber(risk?.score, null);
 
   if (
     !risk?.assessed ||
@@ -204,25 +227,33 @@ function getCombinedRiskDetails(risk) {
 
 
 function calculateTrend(readings) {
-  if (readings.length < 2) {
-    return 0;
+  const validReadings = readings.filter(
+    (reading) =>
+      toNumber(reading.level_m, null) != null &&
+      Number.isFinite(new Date(reading.recorded_at).getTime())
+  );
+
+  if (validReadings.length < 2) {
+    return null;
   }
 
-  const newest = readings[0];
+  const newest = validReadings[0];
   const oldest =
-    readings[
+    validReadings[
       Math.min(
-        readings.length - 1,
+        validReadings.length - 1,
         9
       )
     ];
 
   const newestLevel = toNumber(
-    newest.level_m
+    newest.level_m,
+    null
   );
 
   const oldestLevel = toNumber(
-    oldest.level_m
+    oldest.level_m,
+    null
   );
 
   const newestTime = new Date(
@@ -241,7 +272,7 @@ function calculateTrend(readings) {
     !Number.isFinite(elapsedHours) ||
     elapsedHours <= 0
   ) {
-    return 0;
+    return null;
   }
 
   return clamp(
@@ -371,6 +402,9 @@ export default function Prediction() {
     lastUpdated,
     setLastUpdated,
   ] = useState(null);
+  const riskWarningShownRef = useRef(false);
+  const requestSequenceRef = useRef(0);
+  const inFlightStationRef = useRef("");
 
 
   const selectedStation = useMemo(
@@ -441,9 +475,19 @@ export default function Prediction() {
   const loadPredictionData =
     useCallback(async () => {
       if (!selectedStationId) {
+        requestSequenceRef.current += 1;
         setCombinedRisk(null);
         return;
       }
+
+      const stationId = selectedStationId;
+
+      if (inFlightStationRef.current === stationId) {
+        return;
+      }
+
+      inFlightStationRef.current = stationId;
+      const requestId = ++requestSequenceRef.current;
 
       try {
         setLoading(true);
@@ -468,7 +512,7 @@ export default function Prediction() {
             )
             .eq(
               "station_id",
-              selectedStationId
+              stationId
             )
             .order("recorded_at", {
               ascending: false,
@@ -495,7 +539,7 @@ export default function Prediction() {
             )
             .eq(
               "station_id",
-              selectedStationId
+              stationId
             )
             .order("recorded_at", {
               ascending: false,
@@ -521,7 +565,7 @@ export default function Prediction() {
             )
             .eq(
               "station_id",
-              selectedStationId
+              stationId
             )
             .order("detected_at", {
               ascending: false,
@@ -529,25 +573,23 @@ export default function Prediction() {
             .limit(1)
             .maybeSingle(),
 
-          fetch(
+          fetchJsonWithTimeout(
             `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
-              selectedStationId
+              stationId
             )}`
           )
-            .then(async (response) => {
-              if (!response.ok) {
-                throw new Error(
-                  "Combined-risk endpoint is unavailable."
-                );
-              }
-
-              return response.json();
+            .then((payload) => {
+              riskWarningShownRef.current = false;
+              return payload;
             })
             .catch((error) => {
-              console.warn(
-                "Combined risk unavailable:",
-                error
-              );
+              if (!riskWarningShownRef.current) {
+                console.warn(
+                  "Combined risk unavailable:",
+                  error
+                );
+                riskWarningShownRef.current = true;
+              }
               return null;
             }),
         ]);
@@ -560,6 +602,10 @@ export default function Prediction() {
 
         if (firstError) {
           throw firstError;
+        }
+
+        if (requestId !== requestSequenceRef.current) {
+          return;
         }
 
         setReadings(
@@ -583,17 +629,25 @@ export default function Prediction() {
           new Date().toISOString()
         );
       } catch (error) {
-        console.error(
-          "Prediction loading error:",
-          error
-        );
+        if (requestId === requestSequenceRef.current) {
+          console.error(
+            "Prediction loading error:",
+            error
+          );
 
-        setErrorMessage(
-          error.message ||
-            "Unable to load prediction data."
-        );
+          setErrorMessage(
+            error.message ||
+              "Unable to load prediction data."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (inFlightStationRef.current === stationId) {
+          inFlightStationRef.current = "";
+        }
+
+        if (requestId === requestSequenceRef.current) {
+          setLoading(false);
+        }
       }
     }, [selectedStationId]);
 
@@ -642,6 +696,7 @@ export default function Prediction() {
       );
 
     return () => {
+      requestSequenceRef.current += 1;
       window.clearTimeout(initialLoad);
 
       window.clearInterval(interval);
@@ -652,14 +707,30 @@ export default function Prediction() {
   ]);
 
 
-  const currentLevel = toNumber(
-    readings[0]?.level_m ??
-      yolo?.level_m
+  const latestValidReading = readings.find(
+    (reading) => toNumber(reading.level_m, null) != null
   );
+  const readingLevel = toNumber(latestValidReading?.level_m, null);
+  const detectionLevel = toNumber(yolo?.level_m, null);
+  const readingTime = new Date(
+    latestValidReading?.recorded_at ?? 0
+  ).getTime();
+  const detectionTime = new Date(yolo?.detected_at ?? 0).getTime();
+  const usesDetectionLevel =
+    detectionLevel != null &&
+    (readingLevel == null || detectionTime > readingTime);
+  const currentLevel =
+    usesDetectionLevel
+      ? detectionLevel
+      : readingLevel;
+  const currentLevelTimestamp = usesDetectionLevel
+    ? yolo?.detected_at
+    : latestValidReading?.recorded_at;
 
   const rainfall = toNumber(
     weather?.rain_1h ??
-      readings[0]?.rainfall_mm
+      latestValidReading?.rainfall_mm,
+    null
   );
 
   const warningLevel = toNumber(
@@ -683,26 +754,22 @@ export default function Prediction() {
     [readings]
   );
 
-  const weatherRisk = clamp(
-    toNumber(
-      weather?.flood_risk
-    ),
-    0,
-    1
-  );
+  const weatherRiskValue = toNumber(weather?.flood_risk, null);
+  const weatherRisk =
+    weatherRiskValue == null ? null : clamp(weatherRiskValue, 0, 1);
 
-  const yoloRisk = clamp(
-    toNumber(
-      yolo?.flood_risk
-    ),
-    0,
-    1
-  );
+  const yoloRiskValue = toNumber(yolo?.flood_risk, null);
+  const yoloRisk =
+    yoloRiskValue == null ? null : clamp(yoloRiskValue, 0, 1);
 
 
   const predictions = useMemo(
-    () =>
-      [0, 1, 3, 6].map(
+    () => {
+      if (currentLevel == null || trendPerHour == null) {
+        return [];
+      }
+
+      return [0, 1, 3, 6].map(
         (horizonHours) =>
           calculatePrediction({
             currentLevel,
@@ -710,11 +777,12 @@ export default function Prediction() {
             horizonHours,
             criticalLevel,
             warningLevel,
-            rainfall,
-            weatherRisk,
-            yoloRisk,
+            rainfall: rainfall ?? 0,
+            weatherRisk: weatherRisk ?? 0,
+            yoloRisk: yoloRisk ?? 0,
           })
-      ),
+      );
+    },
     [
       currentLevel,
       trendPerHour,
@@ -741,12 +809,14 @@ export default function Prediction() {
     ]
       .reverse()
       .slice(-20)
+      .filter((reading) => toNumber(reading.level_m, null) != null)
       .map((reading) => ({
         name: formatChartTime(
           reading.recorded_at
         ),
         level: toNumber(
-          reading.level_m
+          reading.level_m,
+          null
         ),
         type: "Historical",
       }));
@@ -772,7 +842,9 @@ export default function Prediction() {
 
 
   const trendDirection =
-    trendPerHour > 0.01
+    trendPerHour == null
+      ? "unavailable"
+      : trendPerHour > 0.01
       ? "rising"
       : trendPerHour < -0.01
       ? "falling"
@@ -840,7 +912,7 @@ export default function Prediction() {
 
           <div className="prediction-toolbar-actions">
             <span>
-              Updated:{" "}
+              Page refreshed:{" "}
               {formatDateTime(
                 lastUpdated
               )}
@@ -922,15 +994,14 @@ export default function Prediction() {
               </span>
 
               <strong>
-                {currentLevel.toFixed(2)} m
+                {currentLevel == null
+                  ? "--"
+                  : `${currentLevel.toFixed(2)} m`}
               </strong>
 
               <small>
-                Critical at{" "}
-                {criticalLevel.toFixed(
-                  2
-                )}{" "}
-                m
+                {formatFreshness(currentLevelTimestamp, 10 * 60 * 1000)} ·{" "}
+                Critical at {criticalLevel.toFixed(2)} m
               </small>
             </div>
           </article>
@@ -958,13 +1029,9 @@ export default function Prediction() {
               </strong>
 
               <small>
-                {trendPerHour >= 0
-                  ? "+"
-                  : ""}
-                {trendPerHour.toFixed(
-                  3
-                )}{" "}
-                m/hour
+                {trendPerHour == null
+                  ? "Not enough valid readings"
+                  : `${trendPerHour >= 0 ? "+" : ""}${trendPerHour.toFixed(3)} m/hour`}
               </small>
             </div>
           </article>
@@ -978,7 +1045,9 @@ export default function Prediction() {
               <span>Rainfall</span>
 
               <strong>
-                {rainfall.toFixed(1)} mm
+                {rainfall == null
+                  ? "--"
+                  : `${rainfall.toFixed(1)} mm`}
               </strong>
 
               <small>
@@ -999,20 +1068,17 @@ export default function Prediction() {
               </span>
 
               <strong>
-                {Math.round(
-                  yoloRisk * 100
-                )}
-                /100
+                {yoloRisk == null
+                  ? "--"
+                  : `${Math.round(yoloRisk * 100)}/100`}
               </strong>
 
               <small>
                 YOLO confidence{" "}
-                {Math.round(
-                  toNumber(
-                    yolo?.confidence
-                  ) * 100
-                )}
-                % · not flood probability
+                {toNumber(yolo?.confidence, null) == null
+                  ? "--"
+                  : `${Math.round(toNumber(yolo?.confidence, null) * 100)}%`}
+                {" "}· not flood probability
               </small>
             </div>
           </article>

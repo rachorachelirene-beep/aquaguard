@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -36,6 +37,8 @@ import "./CameraSettings.css";
 const cameraApiUrl =
   import.meta.env.VITE_CAMERA_API_URL ??
   "http://localhost:5000";
+const cameraUnavailableMessage =
+  "Unable to connect to the camera service. Start detector/stream_api.py and try again.";
 
 
 const defaultSettings = {
@@ -246,6 +249,8 @@ export default function CameraSettings() {
     copiedMessage,
     setCopiedMessage,
   ] = useState("");
+  const serviceRequestRef = useRef(null);
+  const serviceWarningShownRef = useRef(false);
 
 
   const apiBaseUrl = useMemo(
@@ -452,9 +457,20 @@ export default function CameraSettings() {
 
   const checkService =
     useCallback(async () => {
+      const previousController = serviceRequestRef.current;
+      serviceRequestRef.current = null;
+      previousController?.abort();
+
+      const controller = new AbortController();
+      serviceRequestRef.current = controller;
+      let timedOut = false;
+      const timeout = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 8000);
+
       try {
         setChecking(true);
-        setErrorMessage("");
 
         const [
           healthResponse,
@@ -462,10 +478,12 @@ export default function CameraSettings() {
         ] = await Promise.all([
           fetch(healthUrl, {
             cache: "no-store",
+            signal: controller.signal,
           }),
 
           fetch(detectionUrl, {
             cache: "no-store",
+            signal: controller.signal,
           }),
         ]);
 
@@ -493,20 +511,38 @@ export default function CameraSettings() {
         setDetection(
           detectionData
         );
-      } catch (error) {
-        console.error(
-          "Camera API check error:",
-          error
+        setErrorMessage((currentMessage) =>
+          currentMessage === cameraUnavailableMessage ? "" : currentMessage
         );
+        serviceWarningShownRef.current = false;
+      } catch (error) {
+        if (serviceRequestRef.current !== controller) {
+          return;
+        }
+
+        if (!serviceWarningShownRef.current) {
+          console.error(
+            "Camera API check error:",
+            timedOut
+              ? new Error("Camera API request timed out.")
+              : error
+          );
+          serviceWarningShownRef.current = true;
+        }
 
         setHealth(null);
         setDetection(null);
 
         setErrorMessage(
-          "Unable to connect to the camera service. Start detector/stream_api.py and try again."
+          (currentMessage) => currentMessage || cameraUnavailableMessage
         );
       } finally {
-        setChecking(false);
+        window.clearTimeout(timeout);
+
+        if (serviceRequestRef.current === controller) {
+          serviceRequestRef.current = null;
+          setChecking(false);
+        }
       }
     }, [
       healthUrl,
@@ -549,6 +585,10 @@ export default function CameraSettings() {
       );
 
       window.clearInterval(interval);
+
+      const controller = serviceRequestRef.current;
+      serviceRequestRef.current = null;
+      controller?.abort();
     };
   }, [
     selectedStationId,
@@ -948,7 +988,7 @@ export default function CameraSettings() {
     >
       <main className="camera-settings-page">
         {errorMessage && (
-          <div className="camera-message camera-message-error">
+          <div className="camera-message camera-message-error" role="alert">
             <TriangleAlert
               size={18}
             />
@@ -962,6 +1002,7 @@ export default function CameraSettings() {
               onClick={() =>
                 setErrorMessage("")
               }
+              aria-label="Dismiss camera settings error"
             >
               <X size={16} />
             </button>
@@ -969,7 +1010,7 @@ export default function CameraSettings() {
         )}
 
         {successMessage && (
-          <div className="camera-message camera-message-success">
+          <div className="camera-message camera-message-success" role="status">
             <Check size={18} />
 
             <span>
@@ -981,6 +1022,7 @@ export default function CameraSettings() {
               onClick={() =>
                 setSuccessMessage("")
               }
+              aria-label="Dismiss camera settings message"
             >
               <X size={16} />
             </button>
@@ -988,7 +1030,7 @@ export default function CameraSettings() {
         )}
 
         {copiedMessage && (
-          <div className="camera-message camera-message-info">
+          <div className="camera-message camera-message-info" role="status">
             <Clipboard size={18} />
 
             <span>
@@ -1000,6 +1042,7 @@ export default function CameraSettings() {
               onClick={() =>
                 setCopiedMessage("")
               }
+              aria-label="Dismiss copied configuration message"
             >
               <X size={16} />
             </button>

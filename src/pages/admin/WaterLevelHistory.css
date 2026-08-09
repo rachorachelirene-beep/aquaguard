@@ -240,6 +240,12 @@
   background: #fef2f2;
 }
 
+.history-status-unknown {
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  background: #f1f5f9;
+}
+
 .history-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

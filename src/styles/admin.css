@@ -1855,7 +1855,10 @@
 .modal-box {
   width: 100%;
   max-width: 480px;
-  overflow: hidden;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--aq-border);
   border-radius: 14px;
   background: var(--aq-surface);
@@ -2225,6 +2228,12 @@ textarea.form-input {
 .lm-cam-badge.muted {
   color: #667085;
   background: rgba(152, 162, 179, 0.12);
+}
+
+.alert-body,
+.officer-list-item span,
+.lm-alert-item span {
+  overflow-wrap: anywhere;
 }
 
 .lm-cam-badge.fallback {

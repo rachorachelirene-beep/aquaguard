@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 
@@ -119,6 +120,8 @@ export default function Alerts() {
     setAlertToDelete,
   ] = useState(null);
 
+  useEscapeKey(() => setAlertToDelete(null), Boolean(alertToDelete));
+
 
   const stationMap = useMemo(() => {
     const map = new Map();
@@ -211,7 +214,9 @@ export default function Alerts() {
 
 
   useEffect(() => {
-    loadData();
+    const timeout = window.setTimeout(loadData, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [loadData]);
 
 

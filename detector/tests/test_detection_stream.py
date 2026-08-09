@@ -287,10 +287,15 @@ class DetectionStreamTests(unittest.TestCase):
     def test_latest_detection_remains_available(self):
         response = self.client.get("/latest_detection")
         payload = response.get_json()
+        serialized = json.dumps(payload)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["station_id"], 7)
         self.assertIn("combined_risk", payload)
+        self.assertNotIn("camera_password", payload)
+        self.assertNotIn("rtsp_url", payload)
+        self.assertNotIn("must-not-leak", serialized)
+        self.assertNotIn("camera/stream1", serialized)
 
 
 if __name__ == "__main__":

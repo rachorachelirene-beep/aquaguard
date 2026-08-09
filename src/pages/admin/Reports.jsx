@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -40,6 +41,10 @@ import "./Reports.css";
 
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const number = Number(value);
 
   return Number.isFinite(number)
@@ -132,7 +137,14 @@ function getWaterStatus(
   level,
   station
 ) {
-  const numericLevel = toNumber(level);
+  const numericLevel = toNumber(level, null);
+
+  if (numericLevel == null) {
+    return {
+      label: "Unavailable",
+      key: "neutral",
+    };
+  }
 
   const warningLevel = toNumber(
     station?.warning_level,
@@ -165,9 +177,19 @@ function getWaterStatus(
 }
 
 
-function getRiskStatus(value) {
+function getRiskStatus(value, { zeroIsNeutral = false } = {}) {
+  const numericRisk = toNumber(value, null);
+
+  if (numericRisk == null || (zeroIsNeutral && numericRisk === 0)) {
+    return {
+      label: "Not assessed",
+      key: "neutral",
+      percentage: null,
+    };
+  }
+
   const risk = clamp(
-    toNumber(value),
+    numericRisk,
     0,
     1
   );
@@ -201,7 +223,7 @@ function getRiskStatus(value) {
   }
 
   return {
-    label: "Low",
+    label: "Normal",
     key: "normal",
     percentage,
   };
@@ -261,6 +283,7 @@ export default function Reports() {
     generatedAt,
     setGeneratedAt,
   ] = useState(null);
+  const reportRequestRef = useRef(0);
 
 
   const stationMap = useMemo(() => {
@@ -322,6 +345,8 @@ export default function Reports() {
 
   const loadReportData =
     useCallback(async () => {
+      const requestId = ++reportRequestRef.current;
+
       try {
         setLoading(true);
         setErrorMessage("");
@@ -490,6 +515,10 @@ export default function Reports() {
           throw firstError;
         }
 
+        if (requestId !== reportRequestRef.current) {
+          return;
+        }
+
         setWaterRows(
           waterResult.data ?? []
         );
@@ -510,17 +539,21 @@ export default function Reports() {
           new Date().toISOString()
         );
       } catch (error) {
-        console.error(
-          "Report loading error:",
-          error
-        );
+        if (requestId === reportRequestRef.current) {
+          console.error(
+            "Report loading error:",
+            error
+          );
 
-        setErrorMessage(
-          error.message ||
-            "Unable to generate report."
-        );
+          setErrorMessage(
+            error.message ||
+              "Unable to generate report."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (requestId === reportRequestRef.current) {
+          setLoading(false);
+        }
       }
     }, [
       selectedStationId,
@@ -551,22 +584,24 @@ export default function Reports() {
 
 
   useEffect(() => {
-    loadReportData();
+    const timeout = window.setTimeout(loadReportData, 0);
+
+    return () => {
+      reportRequestRef.current += 1;
+      window.clearTimeout(timeout);
+    };
   }, [loadReportData]);
 
 
   const statistics = useMemo(() => {
-    const levels = waterRows.map(
-      (row) =>
-        toNumber(row.level_m)
-    );
+    const levels = waterRows
+      .map((row) => toNumber(row.level_m, null))
+      .filter((value) => value != null);
 
     const rainfallValues =
-      waterRows.map((row) =>
-        toNumber(
-          row.rainfall_mm
-        )
-      );
+      waterRows
+        .map((row) => toNumber(row.rainfall_mm, null))
+        .filter((value) => value != null);
 
     const averageLevel =
       levels.length > 0
@@ -575,19 +610,20 @@ export default function Reports() {
               total + level,
             0
           ) / levels.length
-        : 0;
+        : null;
 
     const highestLevel =
       levels.length > 0
         ? Math.max(...levels)
-        : 0;
+        : null;
 
     const totalRainfall =
-      rainfallValues.reduce(
-        (total, rainfall) =>
-          total + rainfall,
-        0
-      );
+      rainfallValues.length > 0
+        ? rainfallValues.reduce(
+            (total, rainfall) => total + rainfall,
+            0
+          )
+        : null;
 
     const activeAlerts =
       alertRows.filter(
@@ -610,46 +646,20 @@ export default function Reports() {
         );
       }).length;
 
-    const risks =
-      yoloRows.map((row) =>
-        clamp(
-          toNumber(
-            row.flood_risk
-          ),
-          0,
-          1
-        )
-      );
+    const cameraScores = yoloRows
+      .map((row) => toNumber(row.flood_risk, null))
+      .filter((value) => value != null)
+      .map((value) => clamp(value, 0, 1));
 
-    const weatherRisks =
-      weatherRows.map((row) =>
-        clamp(
-          toNumber(
-            row.flood_risk
-          ),
-          0,
-          1
-        )
-      );
-
-    const combinedRisks = [
-      ...risks,
-      ...weatherRisks,
-    ];
-
-    const averageRisk =
-      combinedRisks.length > 0
-        ? combinedRisks.reduce(
-            (total, risk) =>
-              total + risk,
-            0
-          ) /
-          combinedRisks.length
-        : 0;
+    const averageCameraScore =
+      cameraScores.length > 0
+        ? cameraScores.reduce((total, score) => total + score, 0) /
+          cameraScores.length
+        : null;
 
     return {
       readingCount:
-        waterRows.length,
+        levels.length,
 
       averageLevel,
 
@@ -661,15 +671,14 @@ export default function Reports() {
 
       criticalReadings,
 
-      averageRisk:
-        Math.round(
-          averageRisk * 100
-        ),
+      averageCameraScore:
+        averageCameraScore == null
+          ? null
+          : Math.round(averageCameraScore * 100),
     };
   }, [
     waterRows,
     alertRows,
-    weatherRows,
     yoloRows,
     stationMap,
   ]);
@@ -680,6 +689,7 @@ export default function Reports() {
       [...waterRows]
         .reverse()
         .slice(-100)
+        .filter((row) => toNumber(row.level_m, null) != null)
         .map((row) => ({
           id: row.id,
 
@@ -691,11 +701,13 @@ export default function Reports() {
             row.recorded_at,
 
           level: toNumber(
-            row.level_m
+            row.level_m,
+            null
           ),
 
           rainfall: toNumber(
-            row.rainfall_mm
+            row.rainfall_mm,
+            null
           ),
         })),
     [waterRows]
@@ -764,14 +776,12 @@ export default function Reports() {
           station:
             station?.name ??
             "Unknown station",
-          primary:
-            `${toNumber(
-              row.level_m
-            ).toFixed(2)} m`,
-          secondary:
-            `Rainfall: ${toNumber(
-              row.rainfall_mm
-            ).toFixed(1)} mm`,
+          primary: formatMeasurement(row.level_m, 2, " m"),
+          secondary: `Rainfall: ${formatMeasurement(
+            row.rainfall_mm,
+            1,
+            " mm"
+          )}`,
           status: status.label,
           statusKey: status.key,
         };
@@ -821,7 +831,8 @@ export default function Reports() {
 
         const risk =
           getRiskStatus(
-            row.flood_risk
+            row.flood_risk,
+            { zeroIsNeutral: true }
           );
 
         return {
@@ -834,15 +845,16 @@ export default function Reports() {
           primary:
             row.condition_text ??
             "Weather reading",
-          secondary:
-            `${toNumber(
-              row.temperature
-            ).toFixed(1)}°C • Rain: ${toNumber(
-              row.rain_1h ??
-                row.precipitation
-            ).toFixed(1)} mm`,
-          status:
-            `${risk.label} Risk`,
+          secondary: `${formatMeasurement(
+            row.temperature,
+            1,
+            " °C"
+          )} • Rain: ${formatMeasurement(
+            row.rain_1h ?? row.precipitation,
+            1,
+            " mm"
+          )}`,
+          status: risk.percentage == null ? risk.label : `${risk.label} input`,
           statusKey: risk.key,
         };
       });
@@ -867,21 +879,26 @@ export default function Reports() {
             station?.name ??
             "Unknown station",
           primary:
-            `Flood risk: ${risk.percentage}%`,
-          secondary:
-            `Coverage: ${toNumber(
-              row.water_coverage
-            ).toFixed(1)}% • Confidence: ${Math.round(
-              toNumber(
-                row.confidence
-              ) * 100
-            )}%`,
+            risk.percentage == null
+              ? "Camera score: --"
+              : `Camera score: ${risk.percentage}/100`,
+          secondary: `Coverage: ${formatMeasurement(
+            row.water_coverage,
+            1,
+            "%"
+          )} • Confidence: ${formatMeasurement(
+            toNumber(row.confidence, null) == null
+              ? null
+              : toNumber(row.confidence, null) * 100,
+            0,
+            "%"
+          )}`,
           status: risk.label,
           statusKey: risk.key,
         };
       });
 
-    let rows = [];
+    let rows;
 
     if (reportType === "water") {
       rows = waterReportRows;
@@ -1269,10 +1286,7 @@ export default function Reports() {
 
               <small>
                 Average:{" "}
-                {statistics.averageLevel.toFixed(
-                  2
-                )}{" "}
-                m
+                {formatMeasurement(statistics.averageLevel, 2, " m")}
               </small>
             </div>
           </article>
@@ -1288,10 +1302,7 @@ export default function Reports() {
               </span>
 
               <strong>
-                {statistics.highestLevel.toFixed(
-                  2
-                )}{" "}
-                m
+                {formatMeasurement(statistics.highestLevel, 2, " m")}
               </strong>
 
               <small>
@@ -1337,10 +1348,7 @@ export default function Reports() {
               </span>
 
               <strong>
-                {statistics.totalRainfall.toFixed(
-                  1
-                )}{" "}
-                mm
+                {formatMeasurement(statistics.totalRainfall, 1, " mm")}
               </strong>
 
               <small>
@@ -1356,18 +1364,17 @@ export default function Reports() {
 
             <div>
               <span>
-                Average flood risk
+                Average camera score
               </span>
 
               <strong>
-                {
-                  statistics.averageRisk
-                }
-                %
+                {statistics.averageCameraScore == null
+                  ? "--"
+                  : `${statistics.averageCameraScore}/100`}
               </strong>
 
               <small>
-                Weather and AI risk
+                YOLO detections only · not probability
               </small>
             </div>
           </article>
@@ -1787,4 +1794,11 @@ export default function Reports() {
       </main>
     </DashboardLayout>
   );
+}
+
+
+function formatMeasurement(value, decimalPlaces, unit) {
+  const number = toNumber(value, null);
+
+  return number == null ? "--" : `${number.toFixed(decimalPlaces)}${unit}`;
 }

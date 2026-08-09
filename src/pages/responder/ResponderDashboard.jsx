@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bell,
@@ -11,6 +11,7 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 import {
   formatDateTime,
@@ -88,8 +89,16 @@ export default function ResponderDashboard() {
   const [latestDetection, setLatestDetection] = useState(null);
   const [combinedRisk, setCombinedRisk] = useState(null);
   const [riskUnavailable, setRiskUnavailable] = useState(false);
+  const loadInFlightRef = useRef(false);
+  const riskWarningShownRef = useRef(false);
 
   const loadDashboard = useCallback(async ({ showLoading = true } = {}) => {
+    if (loadInFlightRef.current) {
+      return;
+    }
+
+    loadInFlightRef.current = true;
+
     if (showLoading) {
       setLoading(true);
     }
@@ -103,7 +112,6 @@ export default function ResponderDashboard() {
         alertsResult,
         advisoriesResult,
         logsResult,
-        detectionsResult,
       ] = await Promise.all([
         supabase
           .from("stations")
@@ -140,14 +148,6 @@ export default function ResponderDashboard() {
           )
           .order("updated_at", { ascending: false })
           .limit(20),
-        supabase
-          .from("yolo_detections")
-          .select(
-            "id, station_id, level_m, confidence, water_coverage, detected_at"
-          )
-          .order("detected_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
       ]);
 
       const firstError = [
@@ -156,7 +156,6 @@ export default function ResponderDashboard() {
         alertsResult.error,
         advisoriesResult.error,
         logsResult.error,
-        detectionsResult.error,
       ].find(Boolean);
 
       if (firstError) {
@@ -165,34 +164,49 @@ export default function ResponderDashboard() {
 
       const nextStations = stationsResult.data ?? [];
       const nextReadings = readingsResult.data ?? [];
+      const newestValidReading = nextReadings.find(
+        (reading) => numberOrNull(reading.level_m) != null
+      );
       const primaryStationId =
-        nextReadings[0]?.station_id ?? nextStations[0]?.id ?? null;
+        newestValidReading?.station_id ?? nextStations[0]?.id ?? null;
       let nextRisk = null;
       let nextRiskUnavailable = false;
+      let nextDetection = null;
 
       if (primaryStationId != null) {
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 5000);
+        const detectionResult = await supabase
+          .from("yolo_detections")
+          .select(
+            "id, station_id, level_m, confidence, water_coverage, detected_at"
+          )
+          .eq("station_id", primaryStationId)
+          .order("detected_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (detectionResult.error) {
+          throw detectionResult.error;
+        }
+
+        nextDetection = detectionResult.data ?? null;
 
         try {
-          const response = await fetch(
+          const payload = await fetchJsonWithTimeout(
             `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
               primaryStationId
-            )}`,
-            { signal: controller.signal }
+            )}`
           );
-
-          if (!response.ok) {
-            throw new Error("Combined-risk endpoint returned an error.");
-          }
-
-          const payload = await response.json();
           nextRisk = payload?.combined_risk ?? null;
+          riskWarningShownRef.current = false;
         } catch (error) {
-          console.warn("Responder dashboard combined risk unavailable:", error);
+          if (!riskWarningShownRef.current) {
+            console.warn(
+              "Responder dashboard combined risk unavailable:",
+              error
+            );
+            riskWarningShownRef.current = true;
+          }
           nextRiskUnavailable = true;
-        } finally {
-          window.clearTimeout(timeout);
         }
       }
 
@@ -201,7 +215,7 @@ export default function ResponderDashboard() {
       setAlerts(alertsResult.data ?? []);
       setAdvisories(advisoriesResult.data ?? []);
       setLogs(logsResult.data ?? []);
-      setLatestDetection(detectionsResult.data ?? null);
+      setLatestDetection(nextDetection);
       setCombinedRisk(nextRisk);
       setRiskUnavailable(nextRiskUnavailable);
     } catch (error) {
@@ -210,6 +224,7 @@ export default function ResponderDashboard() {
         "Unable to load the responder dashboard. Check your connection and access permissions, then try again."
       );
     } finally {
+      loadInFlightRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -231,7 +246,8 @@ export default function ResponderDashboard() {
     () => buildStationRows(stations, readings),
     [readings, stations]
   );
-  const latestReading = readings[0] ?? null;
+  const latestReading =
+    readings.find((reading) => numberOrNull(reading.level_m) != null) ?? null;
   const primary =
     stationRows.find(
       (item) => String(item.station.id) === String(latestReading?.station_id)

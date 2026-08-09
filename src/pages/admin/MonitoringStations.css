@@ -426,6 +426,12 @@
   background: #fef2f2;
 }
 
+.water-status-unavailable {
+  border-color: #cbd5e1;
+  color: #475569 !important;
+  background: #f1f5f9;
+}
+
 .station-thresholds {
   display: grid;
   grid-template-columns:

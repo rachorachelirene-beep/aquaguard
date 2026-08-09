@@ -206,6 +206,16 @@ function pickSelectedStation(stations, requestedStationId) {
   return stations[0] ?? null;
 }
 
+function pickNewestDetection(...candidates) {
+  return candidates
+    .filter(Boolean)
+    .sort(
+      (first, second) =>
+        new Date(second.detected_at ?? 0).getTime() -
+        new Date(first.detected_at ?? 0).getTime()
+    )[0] ?? null;
+}
+
 function StreamPlaceholder({ streamState }) {
   const isOffline = streamState === "offline";
 
@@ -226,6 +236,9 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedStationId = searchParams.get("station_id");
   const feedRef = useRef(null);
+  const detectorWarningShownRef = useRef(false);
+  const cameraWarningShownRef = useRef(false);
+  const healthWarningShownRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -374,11 +387,21 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
     }
 
     if (detectorResult.error) {
-      console.warn("Detector result table unavailable:", detectorResult.error);
+      if (!detectorWarningShownRef.current) {
+        console.warn("Detector result table unavailable:", detectorResult.error);
+        detectorWarningShownRef.current = true;
+      }
+    } else {
+      detectorWarningShownRef.current = false;
     }
 
     if (camerasResult.error) {
-      console.warn("Camera sources table unavailable:", camerasResult.error);
+      if (!cameraWarningShownRef.current) {
+        console.warn("Camera sources table unavailable:", camerasResult.error);
+        cameraWarningShownRef.current = true;
+      }
+    } else {
+      cameraWarningShownRef.current = false;
     }
 
     return {
@@ -398,8 +421,15 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
 
   useEffect(() => {
     let active = true;
+    let loadInFlight = false;
 
     async function boot(initial = false) {
+      if (loadInFlight) {
+        return;
+      }
+
+      loadInFlight = true;
+
       if (initial) {
         setLoading(true);
       }
@@ -430,6 +460,8 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
           );
         }
       } finally {
+        loadInFlight = false;
+
         if (active) {
           setLoading(false);
         }
@@ -484,6 +516,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
 
         if (active) {
           setDetectorHealth(healthData);
+          healthWarningShownRef.current = false;
         }
       } catch (error) {
         if (
@@ -491,10 +524,13 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
           error.name !== "AbortError"
         ) {
           setDetectorHealth(null);
-          console.warn(
-            "Detector API health unavailable:",
-            error
-          );
+          if (!healthWarningShownRef.current) {
+            console.warn(
+              "Detector API health unavailable:",
+              error
+            );
+            healthWarningShownRef.current = true;
+          }
         }
       }
     }
@@ -528,11 +564,17 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
     stationReadings.find(
       (row) => String(row.station.id) === selectedStationId
     )?.reading ?? historyRows[0] ?? null;
-  const currentDetection = liveDetection ?? detector;
-  const combinedRisk = currentDetection?.combined_risk ?? null;
-  const combinedRiskAssessed = Boolean(combinedRisk?.assessed);
+  const currentDetection = pickNewestDetection(liveDetection, detector, yolo);
+  const combinedRisk =
+    liveDetection?.combined_risk ??
+    detector?.combined_risk ??
+    currentDetection?.combined_risk ??
+    null;
+  const combinedRiskValue = toNumber(combinedRisk?.score);
+  const combinedRiskAssessed = Boolean(combinedRisk?.assessed) &&
+    combinedRiskValue != null;
   const combinedRiskScore = combinedRiskAssessed
-    ? clamp(toNumber(combinedRisk?.score, 0))
+    ? clamp(combinedRiskValue)
     : null;
   const combinedRiskFactors = Array.isArray(combinedRisk?.factors)
     ? combinedRisk.factors

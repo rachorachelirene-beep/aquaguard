@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import useEscapeKey from "../../hooks/useEscapeKey";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 
@@ -268,6 +269,8 @@ export default function Users() {
   const [editForm, setEditForm] =
     useState(emptyEditForm);
 
+  useEscapeKey(closeModal, Boolean(modalMode));
+
 
   const loadUsers =
     useCallback(async () => {
@@ -316,7 +319,9 @@ export default function Users() {
 
 
   useEffect(() => {
-    loadUsers();
+    const timeout = window.setTimeout(loadUsers, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [loadUsers]);
 
 
@@ -643,9 +648,10 @@ export default function Users() {
           );
 
         if (profileError) {
-          console.warn(
-            "Profile synchronization warning:",
-            profileError
+          console.error("New account profile synchronization error:", profileError);
+          await loadUsers();
+          throw new Error(
+            "The authentication account was created, but its AquaGuard role/profile could not be finalized. Review the new resident profile before retrying."
           );
         }
       }
@@ -892,7 +898,7 @@ export default function Users() {
             profile.email,
             {
               redirectTo:
-                `${window.location.origin}/login`,
+                `${window.location.origin}/reset-password`,
             }
           );
 
@@ -1495,6 +1501,7 @@ export default function Users() {
               className="users-modal"
               role="dialog"
               aria-modal="true"
+              aria-labelledby="create-user-title"
             >
               <header className="users-modal-header">
                 <div>
@@ -1502,7 +1509,7 @@ export default function Users() {
                     New account
                   </span>
 
-                  <h2>
+                  <h2 id="create-user-title">
                     Add AquaGuard user
                   </h2>
                 </div>
@@ -1744,6 +1751,7 @@ export default function Users() {
                 className="users-modal"
                 role="dialog"
                 aria-modal="true"
+                aria-labelledby="edit-user-title"
               >
                 <header className="users-modal-header">
                   <div>
@@ -1751,7 +1759,7 @@ export default function Users() {
                       User profile
                     </span>
 
-                    <h2>
+                    <h2 id="edit-user-title">
                       Edit AquaGuard user
                     </h2>
                   </div>

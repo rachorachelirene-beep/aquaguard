@@ -13,22 +13,35 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
+import useEscapeKey from "../../hooks/useEscapeKey";
+import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 
-const cameraApiUrl =
-  import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000";
+const cameraApiBaseUrl = (
+  import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000"
+).replace(/\/+$/, "");
+
+let dashboardRiskWarningShown = false;
 
 function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function formatLevel(value) {
-  return `${toNumber(value).toFixed(2)} m`;
+  const level = toNumber(value, null);
+
+  return level == null ? "--" : `${level.toFixed(2)} m`;
 }
 
 function formatOneDecimal(value) {
-  return toNumber(value).toFixed(1);
+  const number = toNumber(value, null);
+
+  return number == null ? "--" : number.toFixed(1);
 }
 
 function formatTime(value) {
@@ -43,6 +56,17 @@ function formatTime(value) {
 }
 
 function getStatus(level, warning, critical) {
+  if (level == null) {
+    return {
+      key: "unknown",
+      header: "UNAVAILABLE",
+      label: "NO DATA",
+      className: "blue",
+      color: "#64748b",
+      sub: "WAITING FOR READING",
+    };
+  }
+
   if (level >= critical) {
     return {
       key: "critical",
@@ -73,6 +97,78 @@ function getStatus(level, warning, critical) {
     color: "#2f9e69",
     sub: "WITHIN SAFE RANGE",
   };
+}
+
+function getCombinedRiskDetails(risk) {
+  const score = toNumber(risk?.score, null);
+
+  if (!risk?.assessed || score == null) {
+    return {
+      score: null,
+      label: "Not assessed",
+      color: "#64748b",
+      reason: risk?.primary_reason ?? "Insufficient monitoring data",
+    };
+  }
+
+  const colors = {
+    normal: "#2f9e69",
+    moderate: "#c77b2a",
+    high: "#d84a4a",
+    critical: "#b91c1c",
+  };
+
+  return {
+    score: Math.round(Math.min(100, Math.max(0, score))),
+    label: risk.label ?? "Assessed",
+    color: colors[risk.level] ?? colors.normal,
+    reason: risk.primary_reason ?? "Combined monitoring inputs assessed",
+  };
+}
+
+function normalizeScore(value) {
+  const number = toNumber(value, null);
+
+  if (number == null) {
+    return null;
+  }
+
+  return Math.round(
+    Math.min(100, Math.max(0, number <= 1 ? number * 100 : number))
+  );
+}
+
+function formatFreshness(value, staleAfterMs) {
+  if (!value) {
+    return "NO TIMESTAMP";
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return "INVALID TIMESTAMP";
+  }
+
+  return `${Date.now() - timestamp > staleAfterMs ? "STALE" : "UPDATED"} ${formatTime(value)}`;
+}
+
+async function fetchCombinedRisk(stationId) {
+  try {
+    const payload = await fetchJsonWithTimeout(
+      `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
+        stationId
+      )}`
+    );
+    dashboardRiskWarningShown = false;
+    return payload?.combined_risk ?? null;
+  } catch (error) {
+    if (!dashboardRiskWarningShown) {
+      console.warn("Combined risk unavailable:", error);
+      dashboardRiskWarningShown = true;
+    }
+
+    return null;
+  }
 }
 
 function getAlertClass(type) {
@@ -195,11 +291,13 @@ function AdminDashboardContent() {
   const [stations, setStations] = useState([]);
   const [latestReadings, setLatestReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [activeAlertCount, setActiveAlertCount] = useState(0);
   const [history, setHistory] = useState([]);
   const [settings, setSettings] = useState({});
   const [uptimeDays, setUptimeDays] = useState(null);
   const [weather, setWeather] = useState(null);
   const [yolo, setYolo] = useState(null);
+  const [combinedRisk, setCombinedRisk] = useState(null);
   const [modal, setModal] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({
@@ -212,6 +310,8 @@ function AdminDashboardContent() {
     message: "",
   });
 
+  useEscapeKey(() => setModal(null), Boolean(modal));
+
   const loadDashboard = useCallback(async () => {
     setLoadError("");
 
@@ -219,9 +319,8 @@ function AdminDashboardContent() {
       stationsResult,
       readingsResult,
       alertsResult,
+      activeAlertsResult,
       settingsResult,
-      weatherResult,
-      yoloResult,
     ] = await Promise.all([
       supabase
         .from("stations")
@@ -241,32 +340,20 @@ function AdminDashboardContent() {
         )
         .order("created_at", { ascending: false })
         .limit(8),
+      supabase
+        .from("alerts")
+        .select("id", { count: "exact", head: true })
+        .eq("is_resolved", false)
+        .in("type", ["critical", "warning"]),
       supabase.from("settings").select("key, value"),
-      supabase
-        .from("weather_readings")
-        .select(
-          "id, station_id, temperature, precipitation, rain_1h, rain_6h, wind_speed, weather_code, condition_text, flood_risk, recorded_at"
-        )
-        .order("recorded_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("yolo_detections")
-        .select(
-          "id, station_id, water_coverage, level_m, confidence, weather_risk, flood_risk, detected_at"
-        )
-        .order("detected_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
     ]);
 
     const firstError = [
       stationsResult.error,
       readingsResult.error,
       alertsResult.error,
+      activeAlertsResult.error,
       settingsResult.error,
-      weatherResult.error,
-      yoloResult.error,
     ].find(Boolean);
 
     if (firstError) {
@@ -290,42 +377,90 @@ function AdminDashboardContent() {
         ...latestByStation.get(String(station.id)),
         station,
       }))
-      .filter((reading) => reading.id);
+      .filter((reading) => reading.id)
+      .sort(
+        (first, second) =>
+          new Date(second.recorded_at).getTime() -
+          new Date(first.recorded_at).getTime()
+      );
 
     const primaryStation = nextLatest[0]?.station ?? nextStations[0];
     let nextHistory = [];
+    let nextWeather = null;
+    let nextYolo = null;
+    let nextCombinedRisk = null;
 
     if (primaryStation?.id) {
-      const historyResult = await supabase
-        .from("water_levels")
-        .select("id, station_id, level_m, rainfall_mm, recorded_at")
-        .eq("station_id", primaryStation.id)
-        .order("recorded_at", { ascending: false })
-        .limit(24);
+      const [historyResult, weatherResult, yoloResult, riskResult] =
+        await Promise.all([
+          supabase
+            .from("water_levels")
+            .select("id, station_id, level_m, rainfall_mm, recorded_at")
+            .eq("station_id", primaryStation.id)
+            .order("recorded_at", { ascending: false })
+            .limit(24),
+          supabase
+            .from("weather_readings")
+            .select(
+              "id, station_id, temperature, precipitation, rain_1h, rain_6h, wind_speed, weather_code, condition_text, flood_risk, recorded_at"
+            )
+            .eq("station_id", primaryStation.id)
+            .order("recorded_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("yolo_detections")
+            .select(
+              "id, station_id, water_coverage, level_m, confidence, weather_risk, flood_risk, detected_at"
+            )
+            .eq("station_id", primaryStation.id)
+            .order("detected_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          fetchCombinedRisk(primaryStation.id),
+        ]);
 
-      if (historyResult.error) {
-        throw historyResult.error;
+      const detailError = [
+        historyResult.error,
+        weatherResult.error,
+        yoloResult.error,
+      ].find(Boolean);
+
+      if (detailError) {
+        throw detailError;
       }
 
       nextHistory = (historyResult.data ?? []).reverse();
+      nextWeather = weatherResult.data ?? null;
+      nextYolo = yoloResult.data ?? null;
+      nextCombinedRisk = riskResult;
     }
 
     setStations(nextStations);
     setLatestReadings(nextLatest);
     setAlerts(alertsResult.data ?? []);
+    setActiveAlertCount(activeAlertsResult.count ?? 0);
     const nextSettings = buildSettingsMap(settingsResult.data);
 
     setSettings(nextSettings);
     setUptimeDays(computeUptimeDays(nextSettings.uptime_start));
-    setWeather(weatherResult.data ?? null);
-    setYolo(yoloResult.data ?? null);
+    setWeather(nextWeather);
+    setYolo(nextYolo);
+    setCombinedRisk(nextCombinedRisk);
     setHistory(nextHistory);
   }, []);
 
   useEffect(() => {
     let active = true;
+    let loadInFlight = false;
 
     async function boot({ initial = false } = {}) {
+      if (loadInFlight) {
+        return;
+      }
+
+      loadInFlight = true;
+
       if (initial) {
         setLoading(true);
       }
@@ -341,6 +476,8 @@ function AdminDashboardContent() {
           );
         }
       } finally {
+        loadInFlight = false;
+
         if (active) {
           setLoading(false);
         }
@@ -358,7 +495,8 @@ function AdminDashboardContent() {
 
   const primary = latestReadings[0] ?? null;
   const primaryStation = primary?.station ?? stations[0] ?? null;
-  const currentLevel = toNumber(primary?.level_m);
+  const currentLevel = toNumber(primary?.level_m, null);
+  const hasCurrentReading = currentLevel != null;
   const criticalLevel = toNumber(
     primaryStation?.critical_level,
     toNumber(settings.critical_level, 2.5)
@@ -371,27 +509,24 @@ function AdminDashboardContent() {
     primaryStation?.normal_level,
     toNumber(settings.normal_level, 1)
   );
-  const rainfall24 = toNumber(primary?.rainfall_mm);
+  const latestRainfall = toNumber(primary?.rainfall_mm, null);
   const status = getStatus(
     currentLevel,
     warningLevel,
     criticalLevel
   );
-  const activeAlerts = alerts.filter(
-    (alert) =>
-      !alert.is_resolved &&
-      ["critical", "warning"].includes(alert.type)
-  ).length;
-
   const historyMax = Math.max(criticalLevel, normalLevel, 1);
-  const yoloRisk = yolo ? Math.round(toNumber(yolo.flood_risk) * 100) : null;
-  const weatherRisk = weather
-    ? Math.round(toNumber(weather.flood_risk) * 100)
-    : null;
+  const yoloRisk = normalizeScore(yolo?.flood_risk);
+  const combinedRiskDetails = getCombinedRiskDetails(combinedRisk);
   const stationName = primaryStation?.name ?? "No Station";
   const waterPct = Math.min(
     100,
-    criticalLevel > 0 ? (currentLevel / criticalLevel) * 100 : 0
+    hasCurrentReading && criticalLevel > 0
+      ? (currentLevel / criticalLevel) * 100
+      : 0
+  );
+  const validHistory = history.filter(
+    (reading) => toNumber(reading.level_m, null) != null
   );
 
   async function handleAnnouncementSubmit(event) {
@@ -484,9 +619,11 @@ function AdminDashboardContent() {
                 </span>
               </div>
               <div className="stat-value blue">
-                {primary ? formatLevel(currentLevel) : "No data"}
+                {hasCurrentReading ? formatLevel(currentLevel) : "No data"}
               </div>
-              <div className="stat-sub">STATION: {stationName}</div>
+              <div className="stat-sub">
+                {stationName} · {formatFreshness(primary?.recorded_at, 10 * 60 * 1000)}
+              </div>
             </div>
 
             <div className="stat-card warning-card">
@@ -503,40 +640,42 @@ function AdminDashboardContent() {
               <div
                 className={`stat-value ${status.className} big`}
               >
-                {primary ? status.label : "NO DATA"}
+                {status.label}
               </div>
               <div className="stat-sub">
-                {primary ? status.sub : "WAITING FOR READING"}
+                {status.sub}
               </div>
             </div>
 
             <div className="stat-card">
               <div className="stat-header">
-                <span className="stat-label">RAINFALL (24H)</span>
+                <span className="stat-label">RAINFALL READING</span>
                 <span className="stat-icon blue">
                   <CloudRain size={22} />
                 </span>
               </div>
               <div className="stat-value blue">
-                {primary ? `${formatOneDecimal(rainfall24)} mm` : "No data"}
+                {latestRainfall == null
+                  ? "No data"
+                  : `${formatOneDecimal(latestRainfall)} mm`}
               </div>
               <div className="stat-sub">LATEST READING</div>
             </div>
 
             <div className="stat-card">
               <div className="stat-header">
-                <span className="stat-label">SYSTEM UPTIME</span>
+                <span className="stat-label">UPTIME TRACKING</span>
                 <span className="stat-icon green">
                   <CheckCircle2 size={22} />
                 </span>
               </div>
               <div className="stat-value green">
-                {uptimeDays == null ? "No data" : "Online"}
+                {uptimeDays == null ? "No data" : `${uptimeDays} days`}
               </div>
               <div className="stat-sub">
                 {uptimeDays == null
                   ? "UPTIME START NOT SET"
-                  : `OPERATIONAL (${uptimeDays} DAYS)`}
+                  : "BASED ON CONFIGURED START DATE"}
               </div>
             </div>
           </section>
@@ -550,11 +689,12 @@ function AdminDashboardContent() {
                 </span>
               </div>
               <div className="stat-value compact">
-                {weather?.condition_text ?? "No data"}
+                {weather?.condition_text || "No data"}
               </div>
               <div className="stat-sub">
-                {weather?.temperature ?? "—"}°C |{" "}
-                {weather?.wind_speed ?? "—"} km/h
+                {formatOneDecimal(weather?.temperature)}°C |{" "}
+                {formatOneDecimal(weather?.wind_speed)} km/h ·{" "}
+                {formatFreshness(weather?.recorded_at, 30 * 60 * 1000)}
               </div>
             </div>
 
@@ -566,12 +706,12 @@ function AdminDashboardContent() {
                 </span>
               </div>
               <div className="stat-value rain">
-                {weather
-                  ? `${formatOneDecimal(weather.precipitation)} mm`
-                  : "No data"}
+                {toNumber(weather?.precipitation, null) == null
+                  ? "No data"
+                  : `${formatOneDecimal(weather.precipitation)} mm`}
               </div>
               <div className="stat-sub">
-                6h forecast:{" "}
+                Latest 6h total:{" "}
                 {weather?.rain_6h == null
                   ? "—"
                   : `${formatOneDecimal(weather.rain_6h)} mm`}
@@ -580,20 +720,27 @@ function AdminDashboardContent() {
 
             <div className="stat-card weather-risk-card">
               <div className="stat-header">
-                <span className="stat-label">WEATHER RISK</span>
+                <span className="stat-label">COMBINED FLOOD RISK</span>
                 <span className="stat-icon orange">
                   <TriangleAlert size={22} />
                 </span>
               </div>
-              <div className="stat-value orange">
-                {weatherRisk == null ? "No data" : `${weatherRisk}%`}
+              <div
+                className="stat-value"
+                style={{ color: combinedRiskDetails.color }}
+              >
+                {combinedRiskDetails.score == null
+                  ? "Not assessed"
+                  : `${combinedRiskDetails.score}/100`}
               </div>
-              <div className="stat-sub">Weather contribution</div>
+              <div className="stat-sub">
+                {combinedRiskDetails.label} · {combinedRiskDetails.reason}
+              </div>
             </div>
 
             <div className="stat-card yolo-card">
               <div className="stat-header">
-                <span className="stat-label">YOLO FLOOD RISK</span>
+                <span className="stat-label">CAMERA EVIDENCE SCORE</span>
                 <span className="stat-icon red">
                   <Activity size={22} />
                 </span>
@@ -612,13 +759,13 @@ function AdminDashboardContent() {
                   fontSize: yoloRisk == null ? "1rem" : undefined,
                 }}
               >
-                {yoloRisk == null ? "No data" : `${yoloRisk}%`}
+                {yoloRisk == null ? "No data" : `${yoloRisk}/100`}
               </div>
               <div className="stat-sub">
                 {yolo
                   ? `Water: ${formatOneDecimal(
                       yolo.water_coverage
-                    )}% | ${formatTime(yolo.detected_at)}`
+                    )}% | ${formatFreshness(yolo.detected_at, 5 * 60 * 1000)}`
                   : "Start YOLO detector"}
               </div>
             </div>
@@ -628,7 +775,7 @@ function AdminDashboardContent() {
             <div className="live-feed-card">
               <div className="live-badge">
                 <span className="live-dot" />
-                LIVE
+                LATEST
               </div>
               <div className="level-overlay">
                 <div className="level-box">
@@ -672,7 +819,7 @@ function AdminDashboardContent() {
               <div className="panel-header">
                 <span>RECENT ALERTS</span>
                 <span className="badge-active">
-                  {activeAlerts} ACTIVE
+                  {activeAlertCount} ACTIVE
                 </span>
               </div>
               <div className="alert-grid">
@@ -716,12 +863,12 @@ function AdminDashboardContent() {
                 </span>
               </div>
               <div className="bar-chart">
-                {history.length === 0 && (
+                {validHistory.length === 0 && (
                   <div className="dashboard-empty">No history.</div>
                 )}
 
-                {history.map((reading) => {
-                  const level = toNumber(reading.level_m);
+                {validHistory.map((reading) => {
+                  const level = toNumber(reading.level_m, null);
                   const pct = Math.min(
                     100,
                     (level / historyMax) * 100
@@ -846,13 +993,19 @@ function AdminDashboardContent() {
 
       {modal === "announcement" && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Issue public announcement"
+          >
             <div className="modal-header">
               <span>Issue Public Announcement</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setModal(null)}
+                aria-label="Close announcement dialog"
               >
                 x
               </button>
@@ -917,13 +1070,19 @@ function AdminDashboardContent() {
 
       {modal === "maintenance" && (
         <div className="modal-overlay">
-          <div className="modal-box">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Dispatch maintenance"
+          >
             <div className="modal-header">
               <span>Dispatch Maintenance</span>
               <button
                 className="modal-close"
                 type="button"
                 onClick={() => setModal(null)}
+                aria-label="Close maintenance dialog"
               >
                 x
               </button>
@@ -1008,9 +1167,6 @@ function AdminDashboardContent() {
         </div>
       )}
 
-      <span className="dashboard-camera-url" hidden>
-        {cameraApiUrl}
-      </span>
     </>
   );
 }
