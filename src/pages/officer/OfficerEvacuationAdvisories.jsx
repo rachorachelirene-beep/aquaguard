@@ -232,7 +232,8 @@ export default function OfficerEvacuationAdvisories() {
     const { error } = await supabase
       .from("evacuation_advisories")
       .delete()
-      .eq("id", advisoryToDelete.id);
+      .eq("id", advisoryToDelete.id)
+      .eq("issued_by", profile?.id);
 
     setActionLoading("");
 
@@ -418,14 +419,16 @@ export default function OfficerEvacuationAdvisories() {
                             {advisory.is_active ? "Deactivate" : "Reactivate"}
                           </button>
 
-                          <button
-                            className="btn-danger officer-icon-button"
-                            type="button"
-                            onClick={() => setAdvisoryToDelete(advisory)}
-                          >
-                            <Trash2 size={15} />
-                            Delete
-                          </button>
+                          {advisory.issued_by === profile?.id && (
+                            <button
+                              className="btn-danger officer-icon-button"
+                              type="button"
+                              onClick={() => setAdvisoryToDelete(advisory)}
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

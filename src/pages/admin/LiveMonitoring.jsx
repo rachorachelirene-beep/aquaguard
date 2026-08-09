@@ -341,10 +341,9 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
 
     const camerasPromise = stationId
       ? supabase
-          .from("camera_sources")
-          .select("id, station_id, cam_label, stream_type, stream_url, is_active")
-          .eq("station_id", stationId)
-          .order("cam_label", { ascending: true })
+          .rpc("get_camera_source_status", {
+            requested_station_id: String(stationId),
+          })
       : Promise.resolve({ data: [], error: null });
 
     const [

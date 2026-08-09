@@ -447,6 +447,7 @@ function OfficerDashboardContent() {
         level: advisoryForm.level,
         details: advisoryForm.details.trim(),
         is_active: true,
+        issued_by: profile?.id ?? null,
       });
 
     setSubmitting(false);

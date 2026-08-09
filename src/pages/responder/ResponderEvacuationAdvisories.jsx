@@ -41,7 +41,7 @@ export default function ResponderEvacuationAdvisories({
           )
           .order("created_at", { ascending: false })
           .limit(300),
-        supabase.from("profiles").select("id, name, role"),
+        supabase.rpc("get_profile_directory"),
       ]);
 
       if (advisoriesResult.error) {

@@ -93,9 +93,7 @@ export default function OfficerCoordinate() {
         supabase
           .from("stations")
           .select("id, name, location, station_code"),
-        supabase
-          .from("profiles")
-          .select("id, name, role"),
+        supabase.rpc("get_profile_directory"),
       ]);
 
       const firstError = [

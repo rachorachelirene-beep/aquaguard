@@ -40,7 +40,7 @@ export default function ResponderCoordinate() {
             .from("stations")
             .select("id, name, location, station_code")
             .order("name", { ascending: true }),
-          supabase.from("profiles").select("id, name, role"),
+          supabase.rpc("get_profile_directory"),
         ]);
 
       const requiredError = [logsResult.error, stationsResult.error].find(Boolean);

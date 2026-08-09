@@ -11,7 +11,6 @@ export default function Register() {
     name: "",
     email: "",
     password: "",
-    role: "resident",
   });
 
   const [errorMessage, setErrorMessage] = useState("");
@@ -58,7 +57,7 @@ export default function Register() {
         options: {
           data: {
             name: form.name.trim(),
-            role: form.role,
+            role: "resident",
           },
         },
       });
@@ -71,7 +70,6 @@ export default function Register() {
         name: "",
         email: "",
         password: "",
-        role: "resident",
       });
 
       if (data.session) {
@@ -117,7 +115,7 @@ export default function Register() {
         <h1>Create account</h1>
 
         <p className="auth-subtitle">
-          Join AquaGuard today
+          Create a resident account
         </p>
 
         {errorMessage && (
@@ -181,29 +179,6 @@ export default function Register() {
             minLength={8}
             required
           />
-
-          <label htmlFor="register-role">
-            Role
-          </label>
-
-          <select
-            id="register-role"
-            name="role"
-            value={form.role}
-            onChange={handleChange}
-          >
-            <option value="resident">
-              Resident
-            </option>
-
-            <option value="barangay_officer">
-              Barangay Officer
-            </option>
-
-            <option value="disaster_responder">
-              Disaster Responder
-            </option>
-          </select>
 
           <button
             className="auth-button"
