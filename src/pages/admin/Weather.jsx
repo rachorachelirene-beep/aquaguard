@@ -33,16 +33,12 @@ import {
 } from "recharts";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
 import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 
 import "./Weather.css";
 
-
-const cameraApiBaseUrl = (
-  import.meta.env.VITE_CAMERA_API_URL ??
-  "http://localhost:5000"
-).replace(/\/+$/, "");
 
 const weatherStaleAfterMs = 30 * 60 * 1000;
 

@@ -5,10 +5,9 @@ import os
 import re
 import threading
 import time
-import traceback
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
-from urllib.parse import quote
 
 import cv2
 import numpy as np
@@ -87,6 +86,49 @@ except ImportError:
         not_assessed_flood_risk,
     )
 
+try:
+    from .admin_auth import (  # type: ignore[import-not-found]  # noqa: E402
+        AdminAuthorizationError,
+        authorize_active_admin,
+    )
+    from .camera_config import (  # type: ignore[import-not-found]  # noqa: E402
+        CONFIGURATION_ENVIRONMENT,
+        CONFIGURATION_RUNTIME,
+        MAX_WEBCAM_INDEX,
+        MIN_WEBCAM_INDEX,
+        SOURCE_RTSP,
+        SOURCE_USB,
+        CameraConfigError,
+        CameraConfigPersistenceError,
+        CameraConfigStore,
+        build_rtsp_url as build_camera_rtsp_url,
+        prepare_camera_config,
+        public_camera_config,
+        resolve_camera_configuration,
+        validate_camera_config,
+    )
+except ImportError:
+    from admin_auth import (  # noqa: E402
+        AdminAuthorizationError,
+        authorize_active_admin,
+    )
+    from camera_config import (  # noqa: E402
+        CONFIGURATION_ENVIRONMENT,
+        CONFIGURATION_RUNTIME,
+        MAX_WEBCAM_INDEX,
+        MIN_WEBCAM_INDEX,
+        SOURCE_RTSP,
+        SOURCE_USB,
+        CameraConfigError,
+        CameraConfigPersistenceError,
+        CameraConfigStore,
+        build_rtsp_url as build_camera_rtsp_url,
+        prepare_camera_config,
+        public_camera_config,
+        resolve_camera_configuration,
+        validate_camera_config,
+    )
+
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -102,17 +144,10 @@ def env_bool(name: str, default: bool = False) -> bool:
     }
 
 
-CAMERA_SOURCE = os.getenv(
-    "CAMERA_SOURCE",
-    "webcam",
-).strip().lower()
-
 CAMERA_FALLBACK_TO_WEBCAM = env_bool(
     "CAMERA_FALLBACK_TO_WEBCAM",
     True,
 )
-
-CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 
 CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "1280"))
 CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "720"))
@@ -125,28 +160,14 @@ PROCESSING_WIDTH = int(os.getenv("PROCESSING_WIDTH", str(CAMERA_WIDTH)))
 PROCESSING_HEIGHT = int(os.getenv("PROCESSING_HEIGHT", str(CAMERA_HEIGHT)))
 OPENCV_THREADS = max(1, int(os.getenv("OPENCV_THREADS", "1")))
 
-CAMERA_USERNAME = os.getenv(
-    "CAMERA_USERNAME",
-    "",
-).strip()
-
-CAMERA_PASSWORD = os.getenv(
-    "CAMERA_PASSWORD",
-    "",
-).strip()
-
-CAMERA_IP = os.getenv(
-    "CAMERA_IP",
-    "",
-).strip()
-
-CAMERA_STREAM_PATH = os.getenv(
-    "CAMERA_STREAM_PATH",
-    "/stream1",
-).strip()
-
-FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
+FLASK_HOST = os.getenv("FLASK_HOST", "127.0.0.1")
 FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
+
+TRUSTED_FRONTEND_ORIGINS = (
+    "https://aquaguard-live.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
 
 YOLO_ENABLED = env_bool("YOLO_ENABLED", True)
 
@@ -239,13 +260,45 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
 
 cv2.setNumThreads(OPENCV_THREADS)
 
+CAMERA_CONFIG_PATH = BASE_DIR / "data" / "camera_config.json"
+camera_config_store = CameraConfigStore(CAMERA_CONFIG_PATH)
+(
+    initial_camera_config,
+    initial_camera_configuration_source,
+    initial_camera_configuration_error,
+) = resolve_camera_configuration(camera_config_store, os.environ)
+
 
 # =========================================================
 # Flask application
 # =========================================================
 
 app = Flask(__name__)
-CORS(app)
+CORS(
+    app,
+    origins=TRUSTED_FRONTEND_ORIGINS,
+    methods=("GET", "POST", "PUT", "OPTIONS"),
+    allow_headers=("Authorization", "Content-Type"),
+    supports_credentials=False,
+    allow_private_network=True,
+    always_send=False,
+    send_wildcard=False,
+    vary_header=True,
+    max_age=600,
+)
+
+
+@app.after_request
+def prevent_camera_management_caching(response):
+    if request.path in {
+        "/camera_config",
+        "/camera_config/test",
+        "/camera_devices",
+    }:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+
+    return response
 
 
 # =========================================================
@@ -256,6 +309,9 @@ frame_lock = threading.Lock()
 state_lock = threading.Lock()
 station_lock = threading.Lock()
 risk_context_lock = threading.Lock()
+camera_config_lock = threading.RLock()
+capture_thread_lock = threading.Lock()
+camera_agent_initialization_lock = threading.Lock()
 detection_condition = threading.Condition()
 
 latest_jpeg: bytes | None = None
@@ -266,9 +322,16 @@ latest_water_mask: np.ndarray | None = None
 camera_connected = False
 camera_error: str | None = None
 active_camera_source: str | None = None
+camera_reconnecting = False
+camera_config = initial_camera_config
+camera_configuration_source = initial_camera_configuration_source
+camera_configuration_error = initial_camera_configuration_error
+camera_config_generation = 0
 
 capture_thread: threading.Thread | None = None
+camera_agent_initialized = False
 stop_event = threading.Event()
+camera_reconnect_event = threading.Event()
 
 yolo_model: YOLO | None = None
 yolo_error: str | None = None
@@ -331,6 +394,81 @@ PUBLIC_DETECTION_FIELDS = (
 )
 
 
+def get_camera_config_snapshot() -> tuple[dict | None, str, int]:
+    with camera_config_lock:
+        return (
+            dict(camera_config) if camera_config is not None else None,
+            camera_configuration_source,
+            camera_config_generation,
+        )
+
+
+def get_configured_camera_source() -> str | None:
+    config, _, _ = get_camera_config_snapshot()
+    return config.get("source_type") if config else None
+
+
+def get_camera_secret_values() -> tuple[str, ...]:
+    config, _, _ = get_camera_config_snapshot()
+    configured_values = (
+        config.get("camera_username"),
+        config.get("camera_password"),
+    ) if config else ()
+
+    return tuple(
+        str(value)
+        for value in (
+            *configured_values,
+            os.getenv("CAMERA_USERNAME", ""),
+            os.getenv("CAMERA_PASSWORD", ""),
+            SUPABASE_SECRET_KEY,
+        )
+        if value
+    )
+
+
+def get_camera_state_name() -> str:
+    if camera_reconnecting:
+        return "reconnecting"
+
+    return "connected" if camera_connected else "disconnected"
+
+
+def get_public_camera_config_status() -> dict:
+    config, configuration_source, _ = (
+        get_camera_config_snapshot()
+    )
+    status = public_camera_config(
+        config,
+        configuration_source=configuration_source,
+    )
+    status.update(
+        {
+            "camera_connected": camera_connected,
+            "camera_state": get_camera_state_name(),
+            "active_camera_source": active_camera_source,
+            "restart_required": False,
+        }
+    )
+    return status
+
+
+def require_admin(view_function):
+    @wraps(view_function)
+    def protected_view(*args, **kwargs):
+        try:
+            authorize_active_admin(
+                supabase,
+                request.headers.get("Authorization"),
+            )
+        except AdminAuthorizationError as error:
+            return jsonify({"error": error.message}), error.status_code
+
+        return view_function(*args, **kwargs)
+
+    return protected_view
+
+
 def notify_detection_clients() -> int:
     """Wake SSE consumers after already-computed detection state changes."""
 
@@ -355,11 +493,7 @@ def sanitize_public_error(value: object) -> str | None:
         message,
     )
 
-    for secret in (
-        CAMERA_USERNAME,
-        CAMERA_PASSWORD,
-        SUPABASE_SECRET_KEY,
-    ):
+    for secret in get_camera_secret_values():
         if secret:
             message = message.replace(
                 secret,
@@ -473,7 +607,10 @@ def load_yolo_model() -> None:
         yolo_model = None
         yolo_error = str(error)
 
-        print(f"YOLO loading error: {yolo_error}")
+        print(
+            "YOLO loading error: "
+            f"{sanitize_public_error(error)}"
+        )
 
 
 def connect_supabase() -> None:
@@ -501,7 +638,10 @@ def connect_supabase() -> None:
         supabase = None
         supabase_error = str(error)
 
-        print(f"Supabase connection error: {supabase_error}")
+        print(
+            "Supabase connection error: "
+            f"{sanitize_public_error(error)}"
+        )
 
 
 def start_weather_sync() -> None:
@@ -532,7 +672,10 @@ def start_weather_sync() -> None:
         )
     except Exception as error:
         # Weather initialization must never stop camera capture or YOLO.
-        print(f"Open-Meteo weather sync error: {error}")
+        print(
+            "Open-Meteo weather sync error: "
+            f"{sanitize_public_error(error)}"
+        )
 
 
 # =========================================================
@@ -629,7 +772,7 @@ def refresh_risk_context(
     except Exception as error:
         print(
             "Combined-risk station context error | "
-            f"station={station_id}: {error}"
+            f"station={station_id}: {sanitize_public_error(error)}"
         )
 
     try:
@@ -659,7 +802,7 @@ def refresh_risk_context(
     except Exception as error:
         print(
             "Combined-risk weather context error | "
-            f"station={station_id}: {error}"
+            f"station={station_id}: {sanitize_public_error(error)}"
         )
 
     with risk_context_lock:
@@ -909,28 +1052,51 @@ def resize_frame_for_processing(frame: np.ndarray) -> np.ndarray:
     )
 
 
-def build_rtsp_url() -> str:
-    if not CAMERA_USERNAME:
-        raise RuntimeError("CAMERA_USERNAME is missing.")
+def build_rtsp_url(config: dict | None = None) -> str:
+    if config is None:
+        config, _, _ = get_camera_config_snapshot()
 
-    if not CAMERA_PASSWORD:
-        raise RuntimeError("CAMERA_PASSWORD is missing.")
+    if config is None:
+        raise RuntimeError("No camera source is configured.")
 
-    if not CAMERA_IP:
-        raise RuntimeError("CAMERA_IP is missing.")
+    return build_camera_rtsp_url(config)
 
-    username = quote(CAMERA_USERNAME, safe="")
-    password = quote(CAMERA_PASSWORD, safe="")
 
-    stream_path = CAMERA_STREAM_PATH
+def get_webcam_backends() -> list[tuple[str, int]]:
+    if os.name == "nt":
+        return [
+            ("DSHOW", cv2.CAP_DSHOW),
+            ("MSMF", cv2.CAP_MSMF),
+            ("AUTO", cv2.CAP_ANY),
+        ]
 
-    if not stream_path.startswith("/"):
-        stream_path = f"/{stream_path}"
+    return [("AUTO", cv2.CAP_ANY)]
 
-    return (
-        f"rtsp://{username}:{password}"
-        f"@{CAMERA_IP}:554{stream_path}"
-    )
+
+def configure_capture(
+    capture: cv2.VideoCapture,
+    *,
+    usb: bool,
+) -> None:
+    if usb:
+        capture.set(
+            cv2.CAP_PROP_FOURCC,
+            cv2.VideoWriter_fourcc(*"MJPG"),
+        )
+
+    capture.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    capture.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+    capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    for property_name, timeout_ms in (
+        ("CAP_PROP_OPEN_TIMEOUT_MSEC", 5000),
+        ("CAP_PROP_READ_TIMEOUT_MSEC", 5000),
+    ):
+        property_id = getattr(cv2, property_name, None)
+
+        if property_id is not None:
+            capture.set(property_id, timeout_ms)
 
 
 def try_webcam(
@@ -949,30 +1115,7 @@ def try_webcam(
         capture.release()
         return None
 
-    capture.set(
-        cv2.CAP_PROP_FOURCC,
-        cv2.VideoWriter_fourcc(*"MJPG"),
-    )
-
-    capture.set(
-        cv2.CAP_PROP_FRAME_WIDTH,
-        CAMERA_WIDTH,
-    )
-
-    capture.set(
-        cv2.CAP_PROP_FRAME_HEIGHT,
-        CAMERA_HEIGHT,
-    )
-
-    capture.set(
-        cv2.CAP_PROP_FPS,
-        CAMERA_FPS,
-    )
-
-    capture.set(
-        cv2.CAP_PROP_BUFFERSIZE,
-        1,
-    )
+    configure_capture(capture, usb=True)
 
     success, frame = capture.read()
 
@@ -989,89 +1132,56 @@ def try_webcam(
     return capture
 
 
-def open_webcam() -> cv2.VideoCapture:
+def open_usb_camera(config: dict) -> cv2.VideoCapture:
     global active_camera_source
 
-    print("Searching for an available webcam or USB camera...")
+    validated = validate_camera_config(config)
 
-    camera_indices = [
-        CAMERA_INDEX,
-        *[
-            index
-            for index in range(5)
-            if index != CAMERA_INDEX
-        ],
-    ]
+    if validated["source_type"] != SOURCE_USB:
+        raise RuntimeError("A USB camera configuration is required.")
 
-    if os.name == "nt":
-        backends = [
-            ("DSHOW", cv2.CAP_DSHOW),
-            ("MSMF", cv2.CAP_MSMF),
-            ("AUTO", cv2.CAP_ANY),
-        ]
-    else:
-        backends = [
-            ("AUTO", cv2.CAP_ANY),
-        ]
+    camera_index = validated["webcam_index"]
+    print(f"Opening USB webcam index {camera_index}...")
 
-    for camera_index in camera_indices:
-        for backend_name, backend in backends:
+    for backend_name, backend in get_webcam_backends():
+        capture = try_webcam(camera_index, backend)
+
+        if capture is not None:
+            active_camera_source = SOURCE_USB
             print(
-                f"Trying webcam index {camera_index} "
-                f"using {backend_name}..."
+                f"USB webcam {camera_index} connected "
+                f"using {backend_name}."
             )
-
-            capture = try_webcam(
-                camera_index,
-                backend,
-            )
-
-            if capture is not None:
-                active_camera_source = "webcam"
-
-                print(
-                    f"Webcam found at index {camera_index} "
-                    f"using {backend_name}."
-                )
-
-                return capture
+            return capture
 
     raise RuntimeError(
-        "No usable webcam or USB camera was found."
+        f"USB webcam {camera_index} is unavailable or in use."
     )
 
 
-def open_rtsp_camera() -> cv2.VideoCapture:
-    global active_camera_source
+def create_rtsp_capture(config: dict) -> cv2.VideoCapture:
+    rtsp_url = build_rtsp_url(config)
+    timeout_parameters: list[int] = []
 
-    rtsp_url = build_rtsp_url()
+    for property_name, timeout_ms in (
+        ("CAP_PROP_OPEN_TIMEOUT_MSEC", 5000),
+        ("CAP_PROP_READ_TIMEOUT_MSEC", 5000),
+    ):
+        property_id = getattr(cv2, property_name, None)
 
-    print("Opening Tapo RTSP camera...")
+        if property_id is not None:
+            timeout_parameters.extend([property_id, timeout_ms])
 
-    capture = cv2.VideoCapture(
-        rtsp_url,
-        cv2.CAP_FFMPEG,
-    )
+    try:
+        capture = cv2.VideoCapture(
+            rtsp_url,
+            cv2.CAP_FFMPEG,
+            timeout_parameters,
+        )
+    except (TypeError, cv2.error):
+        capture = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
 
-    capture.set(
-        cv2.CAP_PROP_BUFFERSIZE,
-        1,
-    )
-
-    capture.set(
-        cv2.CAP_PROP_FRAME_WIDTH,
-        CAMERA_WIDTH,
-    )
-
-    capture.set(
-        cv2.CAP_PROP_FRAME_HEIGHT,
-        CAMERA_HEIGHT,
-    )
-
-    capture.set(
-        cv2.CAP_PROP_FPS,
-        CAMERA_FPS,
-    )
+    configure_capture(capture, usb=False)
 
     if not capture.isOpened():
         capture.release()
@@ -1092,45 +1202,80 @@ def open_rtsp_camera() -> cv2.VideoCapture:
     except Exception as error:
         capture.release()
         raise RuntimeError(
-            f"RTSP camera returned an invalid frame: {error}"
+            "RTSP camera returned an invalid frame: "
+            f"{sanitize_public_error(error)}"
         ) from error
-
-    active_camera_source = "rtsp"
 
     return capture
 
 
-def open_camera() -> cv2.VideoCapture:
-    if CAMERA_SOURCE == "webcam":
-        return open_webcam()
+def open_rtsp_camera(config: dict) -> cv2.VideoCapture:
+    global active_camera_source
 
-    if CAMERA_SOURCE == "rtsp":
+    print("Opening configured RTSP camera...")
+    capture = create_rtsp_capture(config)
+    active_camera_source = SOURCE_RTSP
+    return capture
+
+
+def get_environment_webcam_fallback() -> dict:
+    return validate_camera_config(
+        {
+            "source_type": SOURCE_USB,
+            "webcam_index": os.getenv("CAMERA_INDEX", "0"),
+        }
+    )
+
+
+def open_camera(
+    config: dict | None = None,
+    configuration_source: str | None = None,
+) -> cv2.VideoCapture:
+    if config is None or configuration_source is None:
+        config, configuration_source, _ = get_camera_config_snapshot()
+
+    if config is None:
+        raise RuntimeError(
+            "No camera source is configured. Use Admin Camera Settings."
+        )
+
+    if config["source_type"] == SOURCE_USB:
+        return open_usb_camera(config)
+
+    if config["source_type"] == SOURCE_RTSP:
         try:
-            return open_rtsp_camera()
+            return open_rtsp_camera(config)
         except Exception as error:
-            if not CAMERA_FALLBACK_TO_WEBCAM:
+            if (
+                configuration_source != CONFIGURATION_ENVIRONMENT
+                or not CAMERA_FALLBACK_TO_WEBCAM
+            ):
                 raise
 
             print(
                 "RTSP camera unavailable; "
-                f"switching to webcam fallback. Reason: {error}"
+                "using the developer webcam fallback. Reason: "
+                f"{sanitize_public_error(error)}"
             )
 
-            return open_webcam()
+            return open_usb_camera(get_environment_webcam_fallback())
 
     raise RuntimeError(
-        "Invalid CAMERA_SOURCE. "
-        "Use 'webcam' or 'rtsp'."
+        "The configured camera source type is invalid."
     )
 
 
 def update_camera_state(
     connected: bool,
     error: str | None = None,
+    *,
+    reconnecting: bool = False,
+    reset_detection: bool = False,
 ) -> None:
     global camera_connected
     global camera_error
     global active_camera_source
+    global camera_reconnecting
     global latest_detection
 
     public_error = (
@@ -1145,9 +1290,12 @@ def update_camera_state(
         state_changed = (
             camera_connected != connected
             or camera_error != public_error
+            or camera_reconnecting != reconnecting
+            or reset_detection
         )
         camera_connected = connected
         camera_error = public_error
+        camera_reconnecting = reconnecting and not connected
 
         if not connected:
             active_camera_source = None
@@ -1160,11 +1308,13 @@ def update_camera_state(
                 **latest_detection,
                 "camera_connected": connected,
                 "status": (
-                    "error"
+                    "reconnecting"
+                    if camera_reconnecting
+                    else "error"
                     if not connected
                     else (
                         "waiting"
-                        if current_status == "error"
+                        if current_status in {"error", "reconnecting"}
                         else current_status
                     )
                 ),
@@ -1172,8 +1322,157 @@ def update_camera_state(
                 "error": public_error,
             }
 
+            if reset_detection:
+                latest_detection.update(
+                    {
+                        "detected": False,
+                        "status": (
+                            "reconnecting"
+                            if camera_reconnecting
+                            else "waiting"
+                        ),
+                        "level_m": None,
+                        "water_level": None,
+                        "confidence": None,
+                        "water_coverage": None,
+                        "flood_risk": None,
+                        "weather_risk": None,
+                        "combined_risk": not_assessed_flood_risk(
+                            "Waiting for a usable monitoring detection."
+                        ),
+                        "waterline_y": None,
+                        "frame_width": None,
+                        "frame_height": None,
+                        "objects": [],
+                        "detected_at": None,
+                    }
+                )
+
     if state_changed:
         notify_detection_clients()
+
+
+def request_camera_reconnect() -> None:
+    """Clear stale frames and wake the one permanent capture worker."""
+
+    global latest_jpeg
+    global latest_camera_frame
+    global latest_frame_at
+    global latest_water_mask
+
+    camera_reconnect_event.set()
+
+    with frame_lock:
+        latest_jpeg = None
+        latest_camera_frame = None
+
+    with state_lock:
+        latest_frame_at = None
+        latest_water_mask = None
+
+    update_camera_state(
+        False,
+        "Camera source is reconnecting.",
+        reconnecting=True,
+        reset_detection=True,
+    )
+
+
+def test_camera_configuration(config: dict) -> None:
+    """Validate a live or temporary source without switching cameras."""
+
+    validated = validate_camera_config(config)
+    capture: cv2.VideoCapture | None = None
+
+    current_config, _, _ = get_camera_config_snapshot()
+
+    if (
+        validated == current_config
+        and camera_connected
+        and active_camera_source == validated["source_type"]
+    ):
+        with frame_lock:
+            active_frame_available = latest_camera_frame is not None
+
+        if active_frame_available:
+            return
+
+    try:
+        if validated["source_type"] == SOURCE_RTSP:
+            capture = create_rtsp_capture(validated)
+            return
+
+        for _, backend in get_webcam_backends():
+            capture = try_webcam(validated["webcam_index"], backend)
+
+            if capture is not None:
+                return
+
+        raise RuntimeError(
+            "The selected USB webcam is unavailable or in use."
+        )
+    finally:
+        if capture is not None:
+            capture.release()
+
+
+def probe_usb_camera_devices() -> list[dict]:
+    """Probe only the small supported Windows webcam-index range."""
+
+    devices: list[dict] = []
+    config, _, _ = get_camera_config_snapshot()
+    active_index = (
+        config.get("webcam_index")
+        if camera_connected
+        and active_camera_source == SOURCE_USB
+        and config
+        and config.get("source_type") == SOURCE_USB
+        else None
+    )
+
+    for camera_index in range(MIN_WEBCAM_INDEX, MAX_WEBCAM_INDEX + 1):
+        available = camera_index == active_index
+
+        if not available:
+            for _, backend in get_webcam_backends():
+                capture = try_webcam(camera_index, backend)
+
+                if capture is not None:
+                    capture.release()
+                    available = True
+                    break
+
+        if available:
+            devices.append(
+                {
+                    "index": camera_index,
+                    "label": f"USB Camera {camera_index}",
+                }
+            )
+
+    return devices
+
+
+def save_camera_configuration(value: dict) -> dict:
+    """Persist a camera source and signal a hot reconnect."""
+
+    global camera_config
+    global camera_configuration_source
+    global camera_configuration_error
+    global camera_config_generation
+
+    existing_config, _, _ = get_camera_config_snapshot()
+    prepared_config = prepare_camera_config(value, existing_config)
+    saved_config = camera_config_store.save(prepared_config)
+
+    with camera_config_lock:
+        camera_config = saved_config
+        camera_configuration_source = CONFIGURATION_RUNTIME
+        camera_configuration_error = None
+        camera_config_generation += 1
+
+    request_camera_reconnect()
+    return saved_config
 
 
 # =========================================================
@@ -1781,7 +2080,8 @@ def create_alert_if_needed(
 
         except Exception as error:
             print(
-                f"Alert creation error: {error}"
+                "Alert creation error: "
+                f"{sanitize_public_error(error)}"
             )
 
 
@@ -1912,7 +2212,8 @@ def write_detection_to_supabase(
         supabase_error = str(error)
 
         print(
-            f"Supabase write error: {supabase_error}"
+            "Supabase write error: "
+            f"{sanitize_public_error(error)}"
         )
 
 
@@ -1935,26 +2236,66 @@ def camera_capture_loop() -> None:
         capture: cv2.VideoCapture | None = None
 
         try:
-            capture = open_camera()
+            camera_reconnect_event.clear()
+            configured_camera, configuration_source, generation = (
+                get_camera_config_snapshot()
+            )
+            capture = open_camera(
+                configured_camera,
+                configuration_source,
+            )
 
             if not capture.isOpened():
                 raise RuntimeError(
                     "OpenCV could not open the camera."
                 )
 
+            _, _, current_generation = get_camera_config_snapshot()
+
+            if (
+                camera_reconnect_event.is_set()
+                or generation != current_generation
+            ):
+                update_camera_state(
+                    False,
+                    "Camera source is reconnecting.",
+                    reconnecting=True,
+                    reset_detection=True,
+                )
+                continue
+
             print("Camera connected successfully.")
             update_camera_state(True)
+            frame_counter = 0
 
             while not stop_event.is_set():
+                if camera_reconnect_event.is_set():
+                    update_camera_state(
+                        False,
+                        "Camera source is reconnecting.",
+                        reconnecting=True,
+                        reset_detection=True,
+                    )
+                    break
+
                 loop_started = time.perf_counter()
-                if active_camera_source == "rtsp" and RTSP_FRAME_SKIP > 0:
+                if (
+                    active_camera_source == SOURCE_RTSP
+                    and RTSP_FRAME_SKIP > 0
+                ):
                     grabbed_frame = False
 
                     for _ in range(RTSP_FRAME_SKIP):
+                        if camera_reconnect_event.is_set():
+                            break
+
                         if capture.grab():
                             grabbed_frame = True
                         else:
                             break
+
+                    if camera_reconnect_event.is_set():
+                        continue
 
                     if grabbed_frame:
                         success, frame = capture.retrieve()
@@ -2073,20 +2414,30 @@ def camera_capture_loop() -> None:
                 sleep_for = target_frame_delay - elapsed
 
                 if sleep_for > 0:
-                    time.sleep(sleep_for)
+                    camera_reconnect_event.wait(sleep_for)
+
+            if camera_reconnect_event.is_set() and not stop_event.is_set():
+                continue
 
         except Exception as error:
-            error_message = str(error)
+            if camera_reconnect_event.is_set() and not stop_event.is_set():
+                update_camera_state(
+                    False,
+                    "Camera source is reconnecting.",
+                    reconnecting=True,
+                    reset_detection=True,
+                )
+            else:
+                error_message = sanitize_public_error(error)
+                print(f"Camera error: {error_message}")
 
-            traceback.print_exc()
-            print(f"Camera error: {error_message}")
+                update_camera_state(
+                    False,
+                    error_message,
+                )
 
-            update_camera_state(
-                False,
-                error_message,
-            )
-
-            time.sleep(3)
+                if not stop_event.is_set():
+                    camera_reconnect_event.wait(3)
 
         finally:
             if capture is not None:
@@ -2096,18 +2447,37 @@ def camera_capture_loop() -> None:
 def start_capture_thread() -> None:
     global capture_thread
 
-    if capture_thread and capture_thread.is_alive():
-        return
+    with capture_thread_lock:
+        if capture_thread and capture_thread.is_alive():
+            return
 
-    stop_event.clear()
+        stop_event.clear()
 
-    capture_thread = threading.Thread(
-        target=camera_capture_loop,
-        name="AquaGuardCameraCapture",
-        daemon=True,
-    )
+        capture_thread = threading.Thread(
+            target=camera_capture_loop,
+            name="AquaGuardCameraCapture",
+            daemon=True,
+        )
 
-    capture_thread.start()
+        capture_thread.start()
+
+
+def initialize_camera_agent() -> bool:
+    """Initialize the existing process-level workers exactly once."""
+
+    global camera_agent_initialized
+
+    with camera_agent_initialization_lock:
+        if camera_agent_initialized:
+            return False
+
+        load_yolo_model()
+        connect_supabase()
+        start_weather_sync()
+        start_capture_thread()
+        camera_agent_initialized = True
+
+        return True
 
 
 # =========================================================
@@ -2149,7 +2519,7 @@ def index():
         {
             "name": "AquaGuard Camera API",
             "status": "running",
-            "camera_source": CAMERA_SOURCE,
+            "camera_source": get_configured_camera_source(),
             "active_camera_source": active_camera_source,
             "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "video_endpoint": "/video_feed",
@@ -2178,13 +2548,18 @@ def health():
             "detected_at"
         )
 
+    configured_camera_source = get_configured_camera_source()
+
     return jsonify(
         {
             "service": "AquaGuard Camera API",
             "running": True,
             "station_id": station_id,
-            "camera_source": CAMERA_SOURCE,
+            # Keep the legacy name while making its configured meaning clear.
+            "camera_source": configured_camera_source,
+            "configured_camera_source": configured_camera_source,
             "active_camera_source": active_camera_source,
+            "camera_state": get_camera_state_name(),
             "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "camera_connected": camera_connected,
             "latest_frame_at": latest_frame_at,
@@ -2208,6 +2583,125 @@ def health():
             ),
         }
     )
+
+
+@app.get("/camera_config")
+@require_admin
+def get_camera_configuration():
+    response_data = get_public_camera_config_status()
+
+    if camera_configuration_error:
+        response_data["configuration_warning"] = (
+            "A saved camera configuration could not be used. "
+            "Review and save the camera settings."
+        )
+
+    return jsonify(response_data)
+
+
+@app.get("/camera_devices")
+@require_admin
+def get_camera_devices():
+    try:
+        devices = probe_usb_camera_devices()
+    except Exception as error:
+        print(
+            "USB webcam discovery failed: "
+            f"{sanitize_public_error(error)}"
+        )
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Connected USB webcams could not be detected."
+                    )
+                }
+            ),
+            500,
+        )
+
+    return jsonify({"devices": devices})
+
+
+@app.post("/camera_config/test")
+@require_admin
+def test_camera_connection():
+    payload = request.get_json(silent=True)
+
+    if not isinstance(payload, dict):
+        return jsonify({"error": "A JSON camera configuration is required."}), 400
+
+    existing_config, _, _ = get_camera_config_snapshot()
+
+    try:
+        candidate = prepare_camera_config(payload, existing_config)
+        test_camera_configuration(candidate)
+    except CameraConfigError as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception as error:
+        safe_error = sanitize_public_error(error)
+        print(f"Temporary camera test failed: {safe_error}")
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": (
+                        "Camera connection failed. Check the camera "
+                        "address, credentials, path, or USB selection."
+                    ),
+                }
+            ),
+            502,
+        )
+
+    return jsonify(
+        {
+            "success": True,
+            "message": "Camera connection successful.",
+        }
+    )
+
+
+@app.put("/camera_config")
+@require_admin
+def update_camera_configuration():
+    payload = request.get_json(silent=True)
+
+    if not isinstance(payload, dict):
+        return jsonify({"error": "A JSON camera configuration is required."}), 400
+
+    try:
+        save_camera_configuration(payload)
+    except CameraConfigError as error:
+        return jsonify({"error": str(error)}), 400
+    except CameraConfigPersistenceError:
+        print(
+            "Camera configuration save failed: "
+            "the runtime data folder is not writable."
+        )
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "The camera configuration could not be saved. "
+                        "Check the detector data-folder permissions."
+                    )
+                }
+            ),
+            500,
+        )
+
+    response_data = get_public_camera_config_status()
+    response_data.update(
+        {
+            "success": True,
+            "message": (
+                "Camera configuration saved. AquaGuard is reconnecting."
+            ),
+            "restart_required": False,
+        }
+    )
+    return jsonify(response_data)
 
 
 @app.get("/weather_status")
@@ -2254,8 +2748,9 @@ def get_latest_detection():
     response_data.update(
         {
             "camera_connected": camera_connected,
-            "camera_source": CAMERA_SOURCE,
+            "camera_source": get_configured_camera_source(),
             "active_camera_source": active_camera_source,
+            "camera_state": get_camera_state_name(),
             "camera_fallback_to_webcam": CAMERA_FALLBACK_TO_WEBCAM,
             "latest_frame_at": latest_frame_at,
             "camera_error": sanitize_public_error(camera_error),
@@ -2449,14 +2944,11 @@ def snapshot():
 # =========================================================
 
 if __name__ == "__main__":
-    load_yolo_model()
-    connect_supabase()
-    start_weather_sync()
-    start_capture_thread()
+    initialize_camera_agent()
 
     print("=" * 62)
     print("AquaGuard Camera + YOLO Service")
-    print(f"Source: {CAMERA_SOURCE}")
+    print(f"Source: {get_configured_camera_source()}")
     print(f"Default station: {DEFAULT_STATION_ID}")
     print(
         f"YOLO model: {resolve_model_path()}"

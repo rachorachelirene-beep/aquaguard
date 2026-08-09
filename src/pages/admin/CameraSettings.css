@@ -53,7 +53,7 @@
 .camera-page-heading {
   display: grid;
   grid-template-columns:
-    auto minmax(0, 1fr) auto;
+    auto minmax(0, 1fr);
   align-items: center;
   gap: 17px;
 
@@ -99,24 +99,6 @@
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.camera-api-address {
-  display: grid;
-  justify-items: end;
-  gap: 5px;
-}
-
-.camera-api-address span {
-  color: #64748b;
-  font-size: 9px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.camera-api-address strong {
-  color: #2563eb;
-  font-size: 11px;
 }
 
 .camera-status-grid {
@@ -188,8 +170,7 @@
 }
 
 .camera-preview-card,
-.camera-card,
-.camera-env-card {
+.camera-card {
   border: 1px solid #dbe5f5;
   border-radius: 14px;
   background: #ffffff;
@@ -435,6 +416,129 @@
 .camera-field select:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.camera-field-helper {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.camera-source-summary {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.camera-source-summary > span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.camera-connection-state {
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.camera-connection-connected {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.camera-connection-reconnecting {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.camera-connection-disconnected {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.camera-source-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 19px 20px 0;
+}
+
+.camera-source-option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 68px;
+  padding: 12px 14px;
+  border: 1px solid #d8e2f1;
+  border-radius: 11px;
+  color: #475569;
+  background: #f8faff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.camera-source-option > span {
+  display: grid;
+  gap: 3px;
+}
+
+.camera-source-option strong {
+  color: #1e293b;
+  font-size: 12px;
+}
+
+.camera-source-option small {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.camera-source-option-active {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 8%);
+}
+
+.camera-source-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.camera-usb-controls {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  padding: 19px 20px;
+}
+
+.camera-usb-controls .camera-field {
+  min-width: 230px;
+  flex: 1;
+}
+
+.camera-source-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 20px;
+  border-top: 1px solid #e5ebf5;
+  background: #f8faff;
+}
+
+.camera-source-actions > span {
+  max-width: 520px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.camera-source-actions > div {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .camera-unit-field {
@@ -806,47 +910,6 @@
   background: #fef2f2;
 }
 
-.camera-env-card textarea {
-  width: calc(100% - 40px);
-  min-height: 330px;
-
-  margin: 19px 20px;
-  padding: 15px;
-
-  border: 1px solid #1e293b;
-  border-radius: 11px;
-  outline: none;
-
-  color: #dbeafe;
-  background: #07111f;
-
-  font-family:
-    Consolas,
-    Monaco,
-    monospace;
-  font-size: 11px;
-  line-height: 1.7;
-  resize: vertical;
-}
-
-.camera-copy-button {
-  height: 39px;
-
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-
-  padding: 0 13px;
-  border: 1px solid #d8e2f1;
-  border-radius: 8px;
-
-  color: #475569;
-  background: #ffffff;
-
-  font-weight: 800;
-  cursor: pointer;
-}
-
 .camera-save-bar {
   display: flex;
   align-items: center;
@@ -961,14 +1024,16 @@
       auto 1fr;
   }
 
-  .camera-api-address {
-    grid-column: 1 / -1;
-    justify-items: start;
-    padding-top: 12px;
-    border-top: 1px solid #dbe5f5;
+  .camera-card-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .camera-card-header {
+  .camera-source-summary {
+    justify-items: start;
+  }
+
+  .camera-source-actions {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -1038,8 +1103,25 @@
 
   .camera-page-heading,
   .camera-status-grid,
-  .camera-form-grid-four {
+  .camera-form-grid-four,
+  .camera-source-options {
     grid-template-columns: 1fr;
+  }
+
+  .camera-usb-controls,
+  .camera-source-actions > div {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .camera-usb-controls .camera-field {
+    min-width: 0;
+  }
+
+  .camera-source-actions button,
+  .camera-usb-controls button {
+    width: 100%;
   }
 
   .camera-preview {

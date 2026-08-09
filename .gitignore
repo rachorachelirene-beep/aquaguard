@@ -23,6 +23,12 @@ __pycache__/
 *.py[cod]
 *.pyo
 
+# Backend-only runtime camera configuration (may contain credentials)
+/detector/data/camera_config.json
+/detector/data/.camera_config_*.tmp
+/detector/data/camera_agent.lock
+/detector/data/camera_agent.pid
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

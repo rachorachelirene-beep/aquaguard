@@ -10,7 +10,6 @@ import {
   BrainCircuit,
   Camera,
   Check,
-  Clipboard,
   Database,
   Eye,
   Gauge,
@@ -27,6 +26,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { cameraAgentBaseUrl as apiBaseUrl } from "../../lib/cameraAgent";
 import { supabase } from "../../lib/supabase";
 import GaugeSettingsCard from "./GaugeSettingsCard";
 import { hasValidGaugePoints } from "./cameraSettingsUtils";
@@ -34,20 +34,23 @@ import { hasValidGaugePoints } from "./cameraSettingsUtils";
 import "./CameraSettings.css";
 
 
-const cameraApiUrl =
-  import.meta.env.VITE_CAMERA_API_URL ??
-  "http://localhost:5000";
 const cameraUnavailableMessage =
-  "Unable to connect to the camera service. Start detector/stream_api.py and try again.";
+  "AquaGuard Camera Agent is not running on this computer. Live camera features are available on the monitoring computer.";
+const AGENT_HEALTH_INTERVAL_MS = 10000;
+const AGENT_OFFLINE_BACKOFF_MS = [5000, 15000, 30000, 60000];
+
+
+const defaultCameraConfiguration = {
+  source_type: "rtsp",
+  camera_ip: "",
+  camera_username: "",
+  camera_password: "",
+  stream_path: "/stream2",
+  webcam_index: "0",
+};
 
 
 const defaultSettings = {
-  camera_source: "webcam",
-  camera_fallback_to_webcam: "true",
-  camera_index: "0",
-  camera_ip: "",
-  camera_stream_path: "/stream1",
-
   camera_width: "1280",
   camera_height: "720",
   camera_fps: "30",
@@ -131,10 +134,86 @@ function formatDateTime(value) {
 }
 
 
-function cleanBaseUrl(value) {
-  return String(value ?? "")
-    .trim()
-    .replace(/\/+$/, "");
+async function requestAdminCameraApi(
+  apiBaseUrl,
+  path,
+  options = {}
+) {
+  const {
+    data: sessionData,
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    throw new Error(
+      "Unable to verify your administrator session."
+    );
+  }
+
+  const accessToken =
+    sessionData.session?.access_token;
+
+  if (!accessToken) {
+    throw new Error(
+      "Your session has expired. Please sign in again."
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    options.timeout ?? 12000
+  );
+
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}${path}`,
+      {
+        method: options.method ?? "GET",
+        cache: "no-store",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ...(options.body
+            ? { "Content-Type": "application/json" }
+            : {}),
+        },
+        body: options.body
+          ? JSON.stringify(options.body)
+          : undefined,
+      }
+    );
+
+    const responseData = await response
+      .json()
+      .catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        responseData.error ||
+          "The camera service could not complete the request."
+      );
+    }
+
+    return responseData;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(
+        "The camera request timed out. Please check the connection.",
+        { cause: error }
+      );
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error(cameraUnavailableMessage, {
+        cause: error,
+      });
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 
@@ -215,6 +294,9 @@ export default function CameraSettings() {
   const [health, setHealth] =
     useState(null);
 
+  const [agentState, setAgentState] =
+    useState("checking");
+
   const [detection, setDetection] =
     useState(null);
 
@@ -226,6 +308,18 @@ export default function CameraSettings() {
 
   const [saving, setSaving] =
     useState(false);
+
+  const [cameraConfiguration, setCameraConfiguration] =
+    useState(defaultCameraConfiguration);
+
+  const [cameraConfigurationStatus, setCameraConfigurationStatus] =
+    useState(null);
+
+  const [cameraDevices, setCameraDevices] =
+    useState([]);
+
+  const [cameraAction, setCameraAction] =
+    useState("");
 
   const [
     streamVersion,
@@ -245,19 +339,12 @@ export default function CameraSettings() {
     setSuccessMessage,
   ] = useState("");
 
-  const [
-    copiedMessage,
-    setCopiedMessage,
-  ] = useState("");
   const serviceRequestRef = useRef(null);
   const serviceWarningShownRef = useRef(false);
-
-
-  const apiBaseUrl = useMemo(
-    () => cleanBaseUrl(cameraApiUrl),
-    []
-  );
-
+  const detectionWarningShownRef = useRef(false);
+  const cameraConnectionRef = useRef(false);
+  const cameraConfigurationLoadedRef = useRef(false);
+  const cameraConfigurationLoadInFlightRef = useRef(false);
 
   const streamUrl = useMemo(() => {
     const params =
@@ -277,7 +364,6 @@ export default function CameraSettings() {
 
     return `${apiBaseUrl}/video_feed?${params.toString()}`;
   }, [
-    apiBaseUrl,
     selectedStationId,
     streamVersion,
   ]);
@@ -301,7 +387,6 @@ export default function CameraSettings() {
       query ? `?${query}` : ""
     }`;
   }, [
-    apiBaseUrl,
     selectedStationId,
   ]);
 
@@ -324,7 +409,6 @@ export default function CameraSettings() {
       query ? `?${query}` : ""
     }`;
   }, [
-    apiBaseUrl,
     selectedStationId,
   ]);
 
@@ -455,6 +539,64 @@ export default function CameraSettings() {
     }, []);
 
 
+  const loadCameraConfiguration =
+    useCallback(async () => {
+      if (cameraConfigurationLoadInFlightRef.current) {
+        return;
+      }
+
+      cameraConfigurationLoadInFlightRef.current = true;
+
+      try {
+        const configuration =
+          await requestAdminCameraApi(
+            apiBaseUrl,
+            "/camera_config"
+          );
+
+        setCameraConfigurationStatus(
+          configuration
+        );
+        cameraConfigurationLoadedRef.current = true;
+
+        if (configuration.configured) {
+          setCameraConfiguration(
+            (currentConfiguration) => ({
+              ...currentConfiguration,
+              source_type:
+                configuration.source_type,
+              camera_ip:
+                configuration.camera_ip ?? "",
+              camera_username:
+                configuration.camera_username ?? "",
+              camera_password: "",
+              stream_path:
+                configuration.stream_path ?? "/stream2",
+              webcam_index: String(
+                configuration.webcam_index ?? 0
+              ),
+            })
+          );
+        }
+
+        if (configuration.configuration_warning) {
+          setErrorMessage(
+            configuration.configuration_warning
+          );
+        }
+      } catch (error) {
+        cameraConfigurationLoadedRef.current = false;
+        setCameraConfigurationStatus(null);
+        setErrorMessage(
+          error.message ||
+            "Unable to load the saved camera configuration."
+        );
+      } finally {
+        cameraConfigurationLoadInFlightRef.current = false;
+      }
+    }, []);
+
+
   const checkService =
     useCallback(async () => {
       const previousController = serviceRequestRef.current;
@@ -472,52 +614,86 @@ export default function CameraSettings() {
       try {
         setChecking(true);
 
-        const [
-          healthResponse,
-          detectionResponse,
-        ] = await Promise.all([
-          fetch(healthUrl, {
-            cache: "no-store",
-            signal: controller.signal,
-          }),
-
-          fetch(detectionUrl, {
-            cache: "no-store",
-            signal: controller.signal,
-          }),
-        ]);
+        const healthResponse = await fetch(healthUrl, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
         if (!healthResponse.ok) {
           throw new Error(
-            `Camera API returned HTTP ${healthResponse.status}.`
-          );
-        }
-
-        if (
-          !detectionResponse.ok
-        ) {
-          throw new Error(
-            `Detection API returned HTTP ${detectionResponse.status}.`
+            `Camera Agent returned HTTP ${healthResponse.status}.`
           );
         }
 
         const healthData =
           await healthResponse.json();
 
-        const detectionData =
-          await detectionResponse.json();
+        if (healthData?.running !== true) {
+          throw new Error(
+            "The Camera Agent is not ready."
+          );
+        }
+
+        const nextCameraConnected = Boolean(
+          healthData.camera_connected
+        );
+
+        if (nextCameraConnected && !cameraConnectionRef.current) {
+          setStreamState("loading");
+          setStreamVersion((currentVersion) => currentVersion + 1);
+        }
+
+        cameraConnectionRef.current = nextCameraConnected;
 
         setHealth(healthData);
-        setDetection(
-          detectionData
-        );
+        setAgentState("online");
         setErrorMessage((currentMessage) =>
           currentMessage === cameraUnavailableMessage ? "" : currentMessage
         );
         serviceWarningShownRef.current = false;
+
+        if (!cameraConfigurationLoadedRef.current) {
+          loadCameraConfiguration();
+        }
+
+        try {
+          const detectionResponse = await fetch(detectionUrl, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+
+          if (!detectionResponse.ok) {
+            throw new Error(
+              `Detection API returned HTTP ${detectionResponse.status}.`
+            );
+          }
+
+          const detectionData = await detectionResponse.json();
+          setDetection(detectionData);
+          detectionWarningShownRef.current = false;
+        } catch (error) {
+          if (serviceRequestRef.current !== controller) {
+            return null;
+          }
+
+          setDetection(null);
+
+          if (
+            error.name !== "AbortError" &&
+            !detectionWarningShownRef.current
+          ) {
+            console.warn(
+              "Latest Camera Agent detection unavailable:",
+              error
+            );
+            detectionWarningShownRef.current = true;
+          }
+        }
+
+        return true;
       } catch (error) {
         if (serviceRequestRef.current !== controller) {
-          return;
+          return null;
         }
 
         if (!serviceWarningShownRef.current) {
@@ -532,10 +708,10 @@ export default function CameraSettings() {
 
         setHealth(null);
         setDetection(null);
+        setAgentState("offline");
+        cameraConnectionRef.current = false;
 
-        setErrorMessage(
-          (currentMessage) => currentMessage || cameraUnavailableMessage
-        );
+        return false;
       } finally {
         window.clearTimeout(timeout);
 
@@ -547,6 +723,7 @@ export default function CameraSettings() {
     }, [
       healthUrl,
       detectionUrl,
+      loadCameraConfiguration,
     ]);
 
 
@@ -554,44 +731,61 @@ export default function CameraSettings() {
     async function initialize() {
       setLoading(true);
 
-      await loadSettings();
+      await Promise.all([
+        loadSettings(),
+        loadCameraConfiguration(),
+      ]);
 
       setLoading(false);
     }
 
     initialize();
-  }, [loadSettings]);
+  }, [
+    loadSettings,
+    loadCameraConfiguration,
+  ]);
 
 
   useEffect(() => {
-    if (!selectedStationId) {
-      return undefined;
+    let active = true;
+    let nextCheck = null;
+    let offlineFailureCount = 0;
+
+    async function runCheck() {
+      const online = await checkService();
+
+      if (!active) {
+        return;
+      }
+
+      let delay = AGENT_HEALTH_INTERVAL_MS;
+
+      if (online === false) {
+        delay = AGENT_OFFLINE_BACKOFF_MS[
+          Math.min(
+            offlineFailureCount,
+            AGENT_OFFLINE_BACKOFF_MS.length - 1
+          )
+        ];
+        offlineFailureCount += 1;
+      } else if (online === true) {
+        offlineFailureCount = 0;
+      }
+
+      nextCheck = window.setTimeout(runCheck, delay);
     }
 
-    const initialCheck =
-      window.setTimeout(() => {
-        checkService();
-      }, 0);
-
-    const interval =
-      window.setInterval(
-        checkService,
-        10000
-      );
+    nextCheck = window.setTimeout(runCheck, 0);
 
     return () => {
-      window.clearTimeout(
-        initialCheck
-      );
-
-      window.clearInterval(interval);
+      active = false;
+      window.clearTimeout(nextCheck);
 
       const controller = serviceRequestRef.current;
       serviceRequestRef.current = null;
       controller?.abort();
     };
   }, [
-    selectedStationId,
     checkService,
   ]);
 
@@ -599,8 +793,7 @@ export default function CameraSettings() {
   useEffect(() => {
     if (
       !errorMessage &&
-      !successMessage &&
-      !copiedMessage
+      !successMessage
     ) {
       return undefined;
     }
@@ -609,7 +802,6 @@ export default function CameraSettings() {
       window.setTimeout(() => {
         setErrorMessage("");
         setSuccessMessage("");
-        setCopiedMessage("");
       }, 5000);
 
     return () =>
@@ -617,7 +809,6 @@ export default function CameraSettings() {
   }, [
     errorMessage,
     successMessage,
-    copiedMessage,
   ]);
 
 
@@ -720,14 +911,6 @@ export default function CameraSettings() {
       settings.waterline_fallback_row_coverage,
       -1
     );
-
-    if (
-      settings.camera_source ===
-        "rtsp" &&
-      !settings.camera_ip.trim()
-    ) {
-      return "Camera IP address is required for RTSP mode.";
-    }
 
     if (
       width < 320 ||
@@ -856,7 +1039,7 @@ export default function CameraSettings() {
       );
 
       setSuccessMessage(
-        "Camera settings saved. Copy the generated .env configuration and restart the detector to apply camera hardware changes."
+        "Detector and gauge settings saved."
       );
     } catch (error) {
       console.error(
@@ -874,72 +1057,254 @@ export default function CameraSettings() {
   }
 
 
-  const envConfiguration =
-    useMemo(() => {
-      const lines = [
-        `CAMERA_SOURCE=${settings.camera_source}`,
-        `CAMERA_FALLBACK_TO_WEBCAM=${settings.camera_fallback_to_webcam}`,
-        `CAMERA_INDEX=${settings.camera_index}`,
-        `CAMERA_WIDTH=${settings.camera_width}`,
-        `CAMERA_HEIGHT=${settings.camera_height}`,
-        `CAMERA_FPS=${settings.camera_fps}`,
-        `JPEG_QUALITY=${settings.jpeg_quality}`,
-        "",
-        `CAMERA_IP=${settings.camera_ip}`,
-        `CAMERA_STREAM_PATH=${settings.camera_stream_path}`,
-        "CAMERA_USERNAME=YOUR_CAMERA_USERNAME",
-        "CAMERA_PASSWORD=YOUR_CAMERA_PASSWORD",
-        "",
-        `YOLO_ENABLED=${settings.yolo_enabled}`,
-        `YOLO_MODEL_PATH=${settings.yolo_model_path}`,
-        `YOLO_CONFIDENCE=${settings.yolo_confidence}`,
-        `YOLO_FRAME_INTERVAL=${settings.yolo_frame_interval}`,
-        "",
-        `MIN_LEVEL_M=${settings.min_level_m}`,
-        `MAX_LEVEL_M=${settings.max_level_m}`,
-        `NORMAL_LEVEL_M=${settings.normal_level_m}`,
-        `WARNING_LEVEL_M=${settings.warning_level_m}`,
-        `CRITICAL_LEVEL_M=${settings.critical_level_m}`,
-        "",
-        `GAUGE_ENABLED=${settings.gauge_enabled}`,
-        `GAUGE_POINTS=${settings.gauge_points}`,
-        `GAUGE_TICK_INTERVAL_M=${settings.gauge_tick_interval_m}`,
-        `GAUGE_LABEL_INTERVAL_M=${settings.gauge_label_interval_m}`,
-        `WATERLINE_ROW_COVERAGE=${settings.waterline_row_coverage}`,
-        `WATERLINE_FALLBACK_ROW_COVERAGE=${settings.waterline_fallback_row_coverage}`,
-        "",
-        `DEFAULT_STATION_ID=${
-          selectedStationId ||
-          settings.default_station_id
-        }`,
-        `SUPABASE_WRITE_INTERVAL=${settings.supabase_write_interval}`,
-      ];
-
-      return lines.join("\n");
-    }, [
-      settings,
-      selectedStationId,
-    ]);
+  function updateCameraConfiguration(
+    key,
+    value
+  ) {
+    setCameraConfiguration(
+      (currentConfiguration) => ({
+        ...currentConfiguration,
+        [key]: String(value),
+      })
+    );
+  }
 
 
-  async function copyEnvironment() {
-    try {
-      await navigator.clipboard.writeText(
-        envConfiguration
+  function selectCameraSource(sourceType) {
+    setCameraConfiguration(
+      (currentConfiguration) => ({
+        ...currentConfiguration,
+        source_type: sourceType,
+        camera_password: "",
+      })
+    );
+    setSuccessMessage("");
+    setErrorMessage("");
+  }
+
+
+  function validateCameraConfiguration() {
+    if (
+      cameraConfiguration.source_type === "usb"
+    ) {
+      const webcamIndex = Number(
+        cameraConfiguration.webcam_index
       );
 
-      setCopiedMessage(
-        "Detector .env configuration copied."
+      if (
+        !Number.isInteger(webcamIndex) ||
+        webcamIndex < 0 ||
+        webcamIndex > 5
+      ) {
+        return "USB webcam index must be between 0 and 5.";
+      }
+
+      return null;
+    }
+
+    if (
+      cameraConfiguration.source_type !== "rtsp"
+    ) {
+      return "Select a valid camera source type.";
+    }
+
+    if (!cameraConfiguration.camera_ip.trim()) {
+      return "Camera IP or host is required.";
+    }
+
+    if (!cameraConfiguration.camera_username.trim()) {
+      return "Camera username is required.";
+    }
+
+    if (!cameraConfiguration.stream_path.trim()) {
+      return "RTSP stream path is required.";
+    }
+
+    const canKeepSavedPassword =
+      cameraConfigurationStatus?.source_type === "rtsp" &&
+      cameraConfigurationStatus?.password_saved;
+
+    if (
+      !cameraConfiguration.camera_password &&
+      !canKeepSavedPassword
+    ) {
+      return "Camera password is required.";
+    }
+
+    return null;
+  }
+
+
+  function buildCameraConfigurationPayload() {
+    if (
+      cameraConfiguration.source_type === "usb"
+    ) {
+      return {
+        source_type: "usb",
+        webcam_index: Number(
+          cameraConfiguration.webcam_index
+        ),
+      };
+    }
+
+    return {
+      source_type: "rtsp",
+      camera_ip:
+        cameraConfiguration.camera_ip.trim(),
+      camera_username:
+        cameraConfiguration.camera_username.trim(),
+      camera_password:
+        cameraConfiguration.camera_password,
+      stream_path:
+        cameraConfiguration.stream_path.trim(),
+    };
+  }
+
+
+  async function testSelectedCamera() {
+    const validationError =
+      validateCameraConfiguration();
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    try {
+      setCameraAction("testing");
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const result = await requestAdminCameraApi(
+        apiBaseUrl,
+        "/camera_config/test",
+        {
+          method: "POST",
+          body: buildCameraConfigurationPayload(),
+        }
+      );
+
+      setSuccessMessage(
+        result.message ||
+          "Camera connection successful."
       );
     } catch (error) {
-      console.error(
-        "Clipboard error:",
-        error
+      setErrorMessage(
+        error.message ||
+          "Unable to test the camera connection."
+      );
+    } finally {
+      setCameraAction("");
+    }
+  }
+
+
+  async function detectUsbCameras() {
+    try {
+      setCameraAction("detecting");
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const result = await requestAdminCameraApi(
+        apiBaseUrl,
+        "/camera_devices",
+        { timeout: 30000 }
+      );
+      const detectedDevices =
+        Array.isArray(result.devices)
+          ? result.devices
+          : [];
+
+      setCameraDevices(detectedDevices);
+
+      if (detectedDevices.length === 0) {
+        setErrorMessage(
+          "No available USB webcam was detected. Check that it is connected and not in use."
+        );
+        return;
+      }
+
+      const selectedIndex = Number(
+        cameraConfiguration.webcam_index
+      );
+      const selectedStillAvailable =
+        detectedDevices.some(
+          (device) =>
+            Number(device.index) === selectedIndex
+        );
+
+      if (!selectedStillAvailable) {
+        updateCameraConfiguration(
+          "webcam_index",
+          detectedDevices[0].index
+        );
+      }
+
+      setSuccessMessage(
+        `${detectedDevices.length} USB webcam${
+          detectedDevices.length === 1 ? "" : "s"
+        } detected.`
+      );
+    } catch (error) {
+      setErrorMessage(
+        error.message ||
+          "Unable to detect connected USB webcams."
+      );
+    } finally {
+      setCameraAction("");
+    }
+  }
+
+
+  async function saveCameraConfiguration() {
+    const validationError =
+      validateCameraConfiguration();
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    try {
+      setCameraAction("saving");
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const result = await requestAdminCameraApi(
+        apiBaseUrl,
+        "/camera_config",
+        {
+          method: "PUT",
+          body: buildCameraConfigurationPayload(),
+        }
       );
 
-      setErrorMessage(
-        "Unable to copy automatically. Select and copy the configuration manually."
+      setCameraConfigurationStatus(result);
+      cameraConfigurationLoadedRef.current = true;
+      setCameraConfiguration(
+        (currentConfiguration) => ({
+          ...currentConfiguration,
+          camera_password: "",
+        })
       );
+      setSuccessMessage(
+        `${
+          result.message ||
+          "Camera configuration saved."
+        } Changing the camera source or position may require recalibrating the water-level gauge.`
+      );
+      setStreamState("loading");
+      setStreamVersion(
+        (currentVersion) => currentVersion + 1
+      );
+      await checkService();
+    } catch (error) {
+      setErrorMessage(
+        error.message ||
+          "Unable to save the camera configuration."
+      );
+    } finally {
+      setCameraAction("");
     }
   }
 
@@ -965,7 +1330,7 @@ export default function CameraSettings() {
 
 
   const cameraConnected =
-    Boolean(
+    agentState === "online" && Boolean(
       health?.camera_connected
     );
 
@@ -978,13 +1343,101 @@ export default function CameraSettings() {
     );
 
   const serviceRunning =
-    Boolean(health?.running);
+    agentState === "online" && Boolean(health?.running);
+
+  const cameraState =
+    agentState === "online"
+      ? health?.camera_state ||
+        cameraConfigurationStatus?.camera_state ||
+        (cameraConnected ? "connected" : "disconnected")
+      : "disconnected";
+
+  const cameraStateLabel =
+    cameraState === "reconnecting"
+      ? "Reconnecting"
+      : cameraState === "connected"
+      ? "Connected"
+       : "Disconnected";
+
+  const configuredCameraSource =
+    health?.configured_camera_source ??
+    health?.camera_source ??
+    cameraConfigurationStatus?.source_type;
+
+  const activeCameraSource =
+    health?.active_camera_source;
+
+  const displayedCameraSource =
+    activeCameraSource ?? configuredCameraSource;
+
+  const displayedCameraSourceLabel =
+    displayedCameraSource === "rtsp"
+      ? "IP Camera / RTSP"
+      : displayedCameraSource === "usb" || displayedCameraSource === "webcam"
+        ? "USB Webcam"
+        : "No camera source";
+
+  const configurationOrigin =
+    cameraConfigurationStatus?.configuration_source ===
+    "runtime_config"
+      ? "Saved Configuration"
+      : cameraConfigurationStatus?.configuration_source ===
+        "environment"
+      ? "Environment Default"
+      : "Not Configured";
+
+  const configuredSourceLabel =
+    cameraConfigurationStatus?.source_type === "rtsp"
+      ? "IP Camera / RTSP"
+      : cameraConfigurationStatus?.source_type === "usb"
+      ? "USB Webcam"
+      : "No camera source";
+
+  const usbCameraOptions =
+    cameraDevices.length > 0
+      ? cameraDevices
+      : [
+          {
+            index: Number(
+              cameraConfiguration.webcam_index || 0
+            ),
+            label: `USB Camera ${
+              cameraConfiguration.webcam_index || 0
+            }`,
+          },
+        ];
+
+  const previewTitle =
+    agentState === "offline"
+      ? "Camera Agent Offline"
+      : agentState === "checking"
+        ? "Checking Camera Agent"
+        : !cameraConnected && cameraState === "reconnecting"
+          ? "Reconnecting Camera"
+          : !cameraConnected
+            ? "Camera Disconnected"
+            : streamState === "error"
+              ? "Camera Feed Unavailable"
+              : "Connecting to Camera";
+
+  const previewMessage =
+    agentState === "offline"
+      ? "Camera Settings are available on the AquaGuard monitoring computer."
+      : agentState === "checking"
+        ? "Checking the local AquaGuard Camera Agent."
+        : !cameraConnected && cameraState === "reconnecting"
+          ? "The Camera Agent is reconnecting the selected camera source."
+          : !cameraConnected
+            ? "The Camera Agent is online, but the selected camera is unavailable."
+            : streamState === "error"
+              ? "The camera is connected, but the live feed could not be opened."
+              : "Opening the live MJPEG feed...";
 
 
   return (
     <DashboardLayout
       title="Camera Settings"
-      description="Configure and test the AquaGuard camera and AI detector service"
+      description="Configure and test the local AquaGuard Camera Agent"
     >
       <main className="camera-settings-page">
         {errorMessage && (
@@ -1029,26 +1482,6 @@ export default function CameraSettings() {
           </div>
         )}
 
-        {copiedMessage && (
-          <div className="camera-message camera-message-info" role="status">
-            <Clipboard size={18} />
-
-            <span>
-              {copiedMessage}
-            </span>
-
-            <button
-              type="button"
-              onClick={() =>
-                setCopiedMessage("")
-              }
-              aria-label="Dismiss copied configuration message"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
         <section className="camera-page-heading">
           <div className="camera-heading-icon">
             <Camera size={30} />
@@ -1060,36 +1493,30 @@ export default function CameraSettings() {
             </span>
 
             <h2>
-              AquaGuard Camera Service
+              AquaGuard Camera Agent
             </h2>
 
             <p>
-              Test the live feed, inspect
-              detector health and prepare
-              the camera configuration.
+              Configure the monitoring
+              camera, test the live feed
+              and review detector health.
             </p>
-          </div>
-
-          <div className="camera-api-address">
-            <span>Camera API</span>
-
-            <strong>
-              {apiBaseUrl}
-            </strong>
           </div>
         </section>
 
         <section className="camera-status-grid">
           <StatusCard
             icon={Server}
-            title="Flask service"
+            title="Camera Agent"
             connected={serviceRunning}
-            connectedText="Running"
-            disconnectedText="Offline"
+            connectedText="Online"
+            disconnectedText={
+              agentState === "checking" ? "Checking" : "Offline"
+            }
             description={
               checking
-                ? "Checking service..."
-                : "Camera API status"
+                ? "Checking this computer..."
+                : "Local monitoring service"
             }
           />
 
@@ -1104,12 +1531,12 @@ export default function CameraSettings() {
               cameraConnected
             }
             connectedText="Connected"
-            disconnectedText="Disconnected"
+            disconnectedText={cameraStateLabel}
             description={
-              health?.active_camera_source
-                ? `Active: ${health.active_camera_source}`
-                : health?.camera_source
-                ? `Configured: ${health.camera_source}`
+              activeCameraSource
+                ? `Active: ${displayedCameraSourceLabel}`
+                : configuredCameraSource
+                ? `Configured: ${displayedCameraSourceLabel}`
                 : "No camera connection"
             }
           />
@@ -1213,53 +1640,45 @@ export default function CameraSettings() {
           </header>
 
           <div className="camera-preview">
-            {streamState !==
-              "ready" && (
+            {(!cameraConnected || streamState !== "ready") && (
               <div className="camera-preview-placeholder">
-                {streamState ===
-                "error" ? (
+                {agentState === "offline" ||
+                (!cameraConnected && agentState === "online") ||
+                streamState === "error" ? (
                   <Video size={38} />
                 ) : (
                   <Camera size={38} />
                 )}
 
-                <strong>
-                  {streamState ===
-                  "error"
-                    ? "Camera feed unavailable"
-                    : "Connecting to camera"}
-                </strong>
+                <strong>{previewTitle}</strong>
 
-                <span>
-                  {streamState ===
-                  "error"
-                    ? "Start the Python detector service and refresh the stream."
-                    : "Opening the live MJPEG feed..."}
-                </span>
+                <span>{previewMessage}</span>
               </div>
             )}
 
-            <img
-              key={streamVersion}
-              src={streamUrl}
-              alt="AquaGuard live camera feed"
-              className={
-                streamState ===
-                "ready"
-                  ? "camera-preview-visible"
-                  : ""
-              }
-              onLoad={() =>
-                setStreamState(
+            {cameraConnected && (
+              <img
+                key={streamVersion}
+                src={streamUrl}
+                alt="AquaGuard live camera feed"
+                className={
+                  streamState ===
                   "ready"
-                )
-              }
-              onError={() =>
-                setStreamState(
-                  "error"
-                )
-              }
-            />
+                    ? "camera-preview-visible"
+                    : ""
+                }
+                onLoad={() =>
+                  setStreamState(
+                    "ready"
+                  )
+                }
+                onError={() =>
+                  setStreamState(
+                    "error"
+                  )
+                }
+              />
+            )}
           </div>
 
           <div className="camera-detection-summary">
@@ -1271,9 +1690,11 @@ export default function CameraSettings() {
               </span>
 
               <strong>
-                {detection?.detected
+                {detection?.detected === true
                   ? "Flood detected"
-                  : "No flood detected"}
+                  : detection?.detected === false
+                    ? "No flood detected"
+                    : "No detection data"}
               </strong>
             </div>
 
@@ -1285,12 +1706,12 @@ export default function CameraSettings() {
               </span>
 
               <strong>
-                {detection?.level_m !==
-                null
-                  ? `${toNumber(
-                      detection?.level_m
-                    ).toFixed(2)} m`
-                  : "--"}
+                {toNumber(detection?.level_m, null) == null
+                  ? "--"
+                  : `${toNumber(
+                      detection.level_m,
+                      null
+                    ).toFixed(2)} m`}
               </strong>
             </div>
 
@@ -1304,12 +1725,14 @@ export default function CameraSettings() {
               </span>
 
               <strong>
-                {Math.round(
-                  toNumber(
-                    detection?.confidence
-                  ) * 100
-                )}
-                %
+                {toNumber(detection?.confidence, null) == null
+                  ? "--"
+                  : `${Math.round(
+                      toNumber(
+                        detection.confidence,
+                        null
+                      ) * 100
+                    )}%`}
               </strong>
             </div>
 
@@ -1353,116 +1776,219 @@ export default function CameraSettings() {
                   </span>
 
                   <h3>
-                    Connection settings
+                    Monitoring camera
                   </h3>
 
                   <p>
-                    Choose a laptop webcam
-                    or Tapo RTSP camera.
+                    Use an IP camera for
+                    permanent monitoring or
+                    a USB webcam for testing
+                    and local monitoring.
                   </p>
+                </div>
+
+                <div className="camera-source-summary">
+                  <span>
+                    {configurationOrigin} · {configuredSourceLabel}
+                  </span>
+
+                  <strong
+                    className={`camera-connection-state camera-connection-${cameraState}`}
+                  >
+                    {cameraStateLabel}
+                  </strong>
                 </div>
               </header>
 
-              <div className="camera-form-grid">
-                <label className="camera-field">
+              <div
+                className="camera-source-options"
+                aria-label="Camera source type"
+              >
+                <button
+                  type="button"
+                  className={
+                    cameraConfiguration.source_type === "rtsp"
+                      ? "camera-source-option camera-source-option-active"
+                      : "camera-source-option"
+                  }
+                  onClick={() =>
+                    selectCameraSource("rtsp")
+                  }
+                  disabled={Boolean(cameraAction)}
+                >
+                  <Video size={19} />
+
                   <span>
-                    Camera source
+                    <strong>IP Camera / RTSP</strong>
+                    <small>
+                      Installed network camera
+                    </small>
                   </span>
+                </button>
 
-                  <select
-                    value={
-                      settings.camera_source
-                    }
-                    onChange={(event) =>
-                      updateSetting(
-                        "camera_source",
-                        event.target.value
-                      )
-                    }
-                  >
-                    <option value="webcam">
-                      Laptop webcam
-                    </option>
+                <button
+                  type="button"
+                  className={
+                    cameraConfiguration.source_type === "usb"
+                      ? "camera-source-option camera-source-option-active"
+                      : "camera-source-option"
+                  }
+                  onClick={() =>
+                    selectCameraSource("usb")
+                  }
+                  disabled={Boolean(cameraAction)}
+                >
+                  <Camera size={19} />
 
-                    <option value="rtsp">
-                      Tapo / RTSP camera
-                    </option>
-                  </select>
-                </label>
-
-                <label className="camera-field">
                   <span>
-                    Webcam index
+                    <strong>USB Webcam</strong>
+                    <small>
+                      Testing or local monitoring
+                    </small>
                   </span>
-
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={
-                      settings.camera_index
-                    }
-                    onChange={(event) =>
-                      updateSetting(
-                        "camera_index",
-                        event.target.value
-                      )
-                    }
-                    disabled={
-                      settings.camera_source !==
-                      "webcam"
-                    }
-                  />
-                </label>
-
-                <label className="camera-field">
-                  <span>
-                    Camera IP address
-                  </span>
-
-                  <input
-                    type="text"
-                    value={
-                      settings.camera_ip
-                    }
-                    onChange={(event) =>
-                      updateSetting(
-                        "camera_ip",
-                        event.target.value
-                      )
-                    }
-                    placeholder="192.168.254.100"
-                    disabled={
-                      settings.camera_source !==
-                      "rtsp"
-                    }
-                  />
-                </label>
-
-                <label className="camera-field">
-                  <span>
-                    RTSP stream path
-                  </span>
-
-                  <input
-                    type="text"
-                    value={
-                      settings.camera_stream_path
-                    }
-                    onChange={(event) =>
-                      updateSetting(
-                        "camera_stream_path",
-                        event.target.value
-                      )
-                    }
-                    placeholder="/stream1"
-                    disabled={
-                      settings.camera_source !==
-                      "rtsp"
-                    }
-                  />
-                </label>
+                </button>
               </div>
+
+              {cameraConfiguration.source_type === "rtsp" ? (
+                <div className="camera-form-grid">
+                  <label className="camera-field">
+                    <span>
+                      Camera IP / Host
+                    </span>
+
+                    <input
+                      type="text"
+                      value={cameraConfiguration.camera_ip}
+                      onChange={(event) =>
+                        updateCameraConfiguration(
+                          "camera_ip",
+                          event.target.value
+                        )
+                      }
+                      placeholder="192.168.1.20"
+                      autoComplete="off"
+                      disabled={Boolean(cameraAction)}
+                    />
+                  </label>
+
+                  <label className="camera-field">
+                    <span>
+                      Camera Username
+                    </span>
+
+                    <input
+                      type="text"
+                      value={cameraConfiguration.camera_username}
+                      onChange={(event) =>
+                        updateCameraConfiguration(
+                          "camera_username",
+                          event.target.value
+                        )
+                      }
+                      placeholder="camera-user"
+                      autoComplete="off"
+                      disabled={Boolean(cameraAction)}
+                    />
+                  </label>
+
+                  <label className="camera-field">
+                    <span>
+                      Camera Password
+                    </span>
+
+                    <input
+                      type="password"
+                      value={cameraConfiguration.camera_password}
+                      onChange={(event) =>
+                        updateCameraConfiguration(
+                          "camera_password",
+                          event.target.value
+                        )
+                      }
+                      placeholder={
+                        cameraConfigurationStatus?.password_saved
+                          ? "Saved password"
+                          : "Enter camera password"
+                      }
+                      autoComplete="new-password"
+                      disabled={Boolean(cameraAction)}
+                    />
+
+                    {cameraConfigurationStatus?.source_type === "rtsp" &&
+                      cameraConfigurationStatus?.password_saved && (
+                        <small className="camera-field-helper">
+                          Camera password is saved. Leave blank to keep the current password.
+                        </small>
+                      )}
+                  </label>
+
+                  <label className="camera-field">
+                    <span>
+                      RTSP Stream Path
+                    </span>
+
+                    <input
+                      type="text"
+                      value={cameraConfiguration.stream_path}
+                      onChange={(event) =>
+                        updateCameraConfiguration(
+                          "stream_path",
+                          event.target.value
+                        )
+                      }
+                      placeholder="/stream2"
+                      autoComplete="off"
+                      disabled={Boolean(cameraAction)}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="camera-usb-controls">
+                  <label className="camera-field">
+                    <span>USB Webcam</span>
+
+                    <select
+                      value={cameraConfiguration.webcam_index}
+                      disabled={Boolean(cameraAction)}
+                      onChange={(event) =>
+                        updateCameraConfiguration(
+                          "webcam_index",
+                          event.target.value
+                        )
+                      }
+                    >
+                      {usbCameraOptions.map((device) => (
+                        <option
+                          key={device.index}
+                          value={String(device.index)}
+                        >
+                          {device.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    className="camera-secondary-button"
+                    onClick={detectUsbCameras}
+                    disabled={Boolean(cameraAction)}
+                  >
+                    {cameraAction === "detecting" ? (
+                      <RefreshCw
+                        size={16}
+                        className="camera-spin"
+                      />
+                    ) : (
+                      <RefreshCw size={16} />
+                    )}
+
+                    {cameraAction === "detecting"
+                      ? "Detecting..."
+                      : "Detect Connected Webcams"}
+                  </button>
+                </div>
+              )}
 
               <div className="camera-security-note">
                 <ShieldCheck
@@ -1476,12 +2002,59 @@ export default function CameraSettings() {
                   </strong>
 
                   <span>
-                    Camera username and
-                    password are not stored
-                    in the browser or
-                    Supabase. Keep them only
-                    inside detector/.env.
+                    The password is sent only
+                    to the protected camera
+                    service and is never
+                    returned to the browser.
                   </span>
+                </div>
+              </div>
+
+              <div className="camera-source-actions">
+                <span>
+                  Changing the camera source or position may require recalibrating the water-level gauge.
+                </span>
+
+                <div>
+                  <button
+                    type="button"
+                    className="camera-secondary-button"
+                    onClick={testSelectedCamera}
+                    disabled={Boolean(cameraAction)}
+                  >
+                    {cameraAction === "testing" ? (
+                      <RefreshCw
+                        size={16}
+                        className="camera-spin"
+                      />
+                    ) : (
+                      <Wifi size={16} />
+                    )}
+
+                    {cameraAction === "testing"
+                      ? "Testing..."
+                      : "Test Connection"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="camera-primary-button"
+                    onClick={saveCameraConfiguration}
+                    disabled={Boolean(cameraAction)}
+                  >
+                    {cameraAction === "saving" ? (
+                      <RefreshCw
+                        size={16}
+                        className="camera-spin"
+                      />
+                    ) : (
+                      <Save size={16} />
+                    )}
+
+                    {cameraAction === "saving"
+                      ? "Saving..."
+                      : "Save Configuration"}
+                  </button>
                 </div>
               </div>
             </section>
@@ -1899,58 +2472,18 @@ export default function CameraSettings() {
               }
             />
 
-            <section className="camera-env-card">
-              <header className="camera-card-header">
-                <div>
-                  <span className="camera-eyebrow">
-                    Detector configuration
-                  </span>
-
-                  <h3>
-                    Generated .env settings
-                  </h3>
-
-                  <p>
-                    Copy this configuration
-                    into detector/.env, add
-                    the private camera
-                    credentials and restart
-                    stream_api.py.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="camera-copy-button"
-                  onClick={
-                    copyEnvironment
-                  }
-                >
-                  <Clipboard
-                    size={16}
-                  />
-
-                  Copy
-                </button>
-              </header>
-
-              <textarea
-                value={envConfiguration}
-                readOnly
-                spellCheck="false"
-              />
-            </section>
-
             <div className="camera-save-bar">
               <div>
                 <strong>
-                  Camera configuration
+                  Detector and gauge settings
                 </strong>
 
                 <span>
-                  Hardware changes require
-                  restarting the Python
-                  detector service.
+                  Save monitoring thresholds,
+                  processing settings and
+                  gauge calibration. Camera
+                  source changes are saved
+                  separately above.
                 </span>
               </div>
 
@@ -1965,7 +2498,7 @@ export default function CameraSettings() {
                 >
                   <Radio size={16} />
 
-                  Test service
+                  Check Camera Agent
                 </button>
 
                 <button

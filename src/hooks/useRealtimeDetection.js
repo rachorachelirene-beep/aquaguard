@@ -6,7 +6,7 @@ import {
 
 
 const FALLBACK_DELAY_MS = 2500;
-const POLLING_INTERVAL_MS = 7000;
+const POLLING_BACKOFF_MS = [7000, 15000, 30000, 60000];
 
 
 function buildDetectionUrl(
@@ -37,8 +37,11 @@ function buildDetectionUrl(
 export default function useRealtimeDetection({
   cameraApiBaseUrl,
   stationId,
+  enabled = true,
 }) {
-  const connectionKey = `${cameraApiBaseUrl}|${stationId}`;
+  const connectionKey = `${cameraApiBaseUrl}|${stationId}|${
+    enabled ? "enabled" : "disabled"
+  }`;
   const [detectionState, setDetectionState] =
     useState({
       key: "",
@@ -51,7 +54,7 @@ export default function useRealtimeDetection({
     });
 
   useEffect(() => {
-    if (!cameraApiBaseUrl || !stationId) {
+    if (!enabled || !cameraApiBaseUrl || !stationId) {
       return undefined;
     }
 
@@ -59,9 +62,11 @@ export default function useRealtimeDetection({
     let eventSource = null;
     let setupTimeout = null;
     let fallbackTimeout = null;
-    let pollingInterval = null;
+    let pollingTimeout = null;
     let pollController = null;
     let pollInFlight = false;
+    let pollingEnabled = false;
+    let pollingFailureCount = 0;
     let pollFailureLogged = false;
     let invalidEventLogged = false;
 
@@ -111,17 +116,32 @@ export default function useRealtimeDetection({
     }
 
     function stopPolling() {
-      if (pollingInterval != null) {
-        window.clearInterval(
-          pollingInterval
-        );
-        pollingInterval = null;
+      pollingEnabled = false;
+
+      if (pollingTimeout != null) {
+        window.clearTimeout(pollingTimeout);
+        pollingTimeout = null;
       }
 
       if (pollController) {
         pollController.abort();
         pollController = null;
       }
+    }
+
+    function scheduleNextPoll(delayMs) {
+      if (
+        !active ||
+        !pollingEnabled ||
+        pollingTimeout != null
+      ) {
+        return;
+      }
+
+      pollingTimeout = window.setTimeout(() => {
+        pollingTimeout = null;
+        pollLatestDetection();
+      }, delayMs);
     }
 
     async function pollLatestDetection() {
@@ -156,19 +176,27 @@ export default function useRealtimeDetection({
           await response.json();
 
         pollFailureLogged = false;
+        pollingFailureCount = 0;
         acceptDetection(payload);
+        updateTransport("polling");
       } catch (error) {
-        if (
-          error.name !== "AbortError" &&
-          active
-        ) {
-          if (!pollFailureLogged) {
+        if (active && pollingEnabled) {
+          if (
+            error.name !== "AbortError" &&
+            !pollFailureLogged
+          ) {
             console.warn(
               "Detection polling unavailable:",
               error
             );
             pollFailureLogged = true;
           }
+
+          pollingFailureCount = Math.min(
+            pollingFailureCount + 1,
+            POLLING_BACKOFF_MS.length - 1
+          );
+          updateTransport("unavailable");
         }
       } finally {
         window.clearTimeout(timeout);
@@ -178,26 +206,30 @@ export default function useRealtimeDetection({
         }
 
         pollInFlight = false;
+
+        if (active && pollingEnabled) {
+          scheduleNextPoll(
+            POLLING_BACKOFF_MS[pollingFailureCount]
+          );
+        }
       }
     }
 
     function startPolling() {
-      if (!active || pollingInterval != null) {
+      if (!active || pollingEnabled) {
         return;
       }
 
-      updateTransport("polling");
+      pollingEnabled = true;
+      pollingFailureCount = 0;
+      updateTransport("reconnecting");
       pollLatestDetection();
-      pollingInterval = window.setInterval(
-        pollLatestDetection,
-        POLLING_INTERVAL_MS
-      );
     }
 
     function schedulePollingFallback() {
       if (
         fallbackTimeout != null ||
-        pollingInterval != null
+        pollingEnabled
       ) {
         return;
       }
@@ -258,7 +290,7 @@ export default function useRealtimeDetection({
           return;
         }
 
-        if (pollingInterval == null) {
+        if (!pollingEnabled) {
           updateTransport("reconnecting");
         }
 
@@ -288,6 +320,7 @@ export default function useRealtimeDetection({
   }, [
     cameraApiBaseUrl,
     connectionKey,
+    enabled,
     stationId,
   ]);
 
@@ -302,11 +335,14 @@ export default function useRealtimeDetection({
         transportState.key ===
         connectionKey
           ? transportState.value
-          : "reconnecting",
+          : enabled
+            ? "reconnecting"
+            : "unavailable",
     }),
     [
       connectionKey,
       detectionState,
+      enabled,
       transportState,
     ]
   );

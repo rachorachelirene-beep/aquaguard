@@ -16,40 +16,11 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useRealtimeDetection from "../../hooks/useRealtimeDetection";
+import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
 import { supabase } from "../../lib/supabase";
 
-const defaultCameraApiUrl =
-  import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000";
-const cameraApiStorageKey = "aquaguard.detectorApiUrl";
-
-function normalizeCameraApiUrl(value, fallback = defaultCameraApiUrl) {
-  const trimmed = String(value ?? "").trim().replace(/\/+$/, "");
-
-  if (!trimmed) {
-    return fallback;
-  }
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  return `https://${trimmed}`;
-}
-
-function getStoredCameraApiUrl() {
-  if (typeof window === "undefined") {
-    return defaultCameraApiUrl;
-  }
-
-  try {
-    return normalizeCameraApiUrl(
-      window.localStorage.getItem(cameraApiStorageKey) ?? defaultCameraApiUrl
-    );
-  } catch (error) {
-    console.warn("Unable to read detector URL override:", error);
-    return defaultCameraApiUrl;
-  }
-}
+const AGENT_HEALTH_INTERVAL_MS = 15000;
+const AGENT_OFFLINE_BACKOFF_MS = [5000, 15000, 30000, 60000];
 
 function toNumber(value, fallback = null) {
   if (value == null || value === "") {
@@ -216,18 +187,54 @@ function pickNewestDetection(...candidates) {
     )[0] ?? null;
 }
 
-function StreamPlaceholder({ streamState }) {
-  const isOffline = streamState === "offline";
+function formatCameraSource(value) {
+  if (value === "usb" || value === "webcam") {
+    return "USB Webcam";
+  }
+
+  if (value === "rtsp") {
+    return "IP Camera / RTSP";
+  }
+
+  return "Not available";
+}
+
+function StreamPlaceholder({ state }) {
+  const messages = {
+    "agent-offline": {
+      title: "Camera Agent Offline",
+      message: "Live Monitoring is available on the AquaGuard monitoring computer.",
+      icon: Video,
+    },
+    "camera-disconnected": {
+      title: "Camera Disconnected",
+      message: "The Camera Agent is online, but the selected camera is unavailable.",
+      icon: Video,
+    },
+    "camera-reconnecting": {
+      title: "Reconnecting Camera",
+      message: "The Camera Agent is reconnecting the selected camera source.",
+      icon: Camera,
+    },
+    "stream-offline": {
+      title: "Live Feed Unavailable",
+      message: "The camera is connected, but the live feed could not be opened.",
+      icon: Video,
+    },
+    connecting: {
+      title: "Connecting Camera",
+      message: "Opening the AI detector stream.",
+      icon: Camera,
+    },
+  };
+  const content = messages[state] ?? messages.connecting;
+  const StateIcon = content.icon;
 
   return (
     <div className="lm-stream-state">
-      {isOffline ? <Video size={34} /> : <Camera size={34} />}
-      <strong>{isOffline ? "Camera Offline" : "Connecting Camera"}</strong>
-      <span>
-        {isOffline
-          ? "Start the Flask camera service to restore the live feed."
-          : "Opening the AI detector stream."}
-      </span>
+      <StateIcon size={34} />
+      <strong>{content.title}</strong>
+      <span>{content.message}</span>
     </div>
   );
 }
@@ -251,6 +258,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
   const [yolo, setYolo] = useState(null);
   const [detector, setDetector] = useState(null);
   const [detectorHealth, setDetectorHealth] = useState(null);
+  const [agentState, setAgentState] = useState("checking");
   const [cameraSources, setCameraSources] = useState([]);
   const [streamStatus, setStreamStatus] = useState({
     key: "",
@@ -259,12 +267,6 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
   const [streamVersion, setStreamVersion] = useState(1);
   const [sendingAlert, setSendingAlert] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const [cameraApiBaseUrl, setCameraApiBaseUrl] = useState(() =>
-    viewOnly ? defaultCameraApiUrl : getStoredCameraApiUrl()
-  );
-  const [cameraApiInput, setCameraApiInput] = useState(() =>
-    viewOnly ? defaultCameraApiUrl : getStoredCameraApiUrl()
-  );
 
   const loadMonitoring = useCallback(async () => {
     const [stationsResult, readingsResult] = await Promise.all([
@@ -488,17 +490,31 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
   } = useRealtimeDetection({
     cameraApiBaseUrl,
     stationId: selectedStationId,
+    enabled: agentState === "online",
   });
 
   useEffect(() => {
     let active = true;
     const cleanBase = cameraApiBaseUrl.replace(/\/+$/, "");
     let requestController = null;
+    let requestTimeout = null;
+    let nextCheckTimeout = null;
+    let offlineFailureCount = 0;
+
+    function scheduleNextCheck(delayMs) {
+      if (!active) {
+        return;
+      }
+
+      nextCheckTimeout = window.setTimeout(loadDetectorHealth, delayMs);
+    }
 
     async function loadDetectorHealth() {
       requestController?.abort();
       const controller = new AbortController();
       requestController = controller;
+      requestTimeout = window.setTimeout(() => controller.abort(), 5000);
+      let nextDelay = AGENT_HEALTH_INTERVAL_MS;
 
       try {
         const healthResponse = await fetch(
@@ -509,48 +525,64 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
         );
 
         if (!healthResponse.ok) {
-          throw new Error("Detector API returned an error response.");
+          throw new Error("Camera Agent returned an error response.");
         }
 
         const healthData = await healthResponse.json();
 
+        if (healthData?.running !== true) {
+          throw new Error("Camera Agent is not ready.");
+        }
+
         if (active) {
           setDetectorHealth(healthData);
+          setAgentState("online");
+          offlineFailureCount = 0;
           healthWarningShownRef.current = false;
         }
       } catch (error) {
-        if (
-          active &&
-          error.name !== "AbortError"
-        ) {
+        if (active) {
           setDetectorHealth(null);
+          setAgentState("offline");
+          nextDelay = AGENT_OFFLINE_BACKOFF_MS[
+            Math.min(
+              offlineFailureCount,
+              AGENT_OFFLINE_BACKOFF_MS.length - 1
+            )
+          ];
+          offlineFailureCount = Math.min(
+            offlineFailureCount + 1,
+            AGENT_OFFLINE_BACKOFF_MS.length - 1
+          );
+
           if (!healthWarningShownRef.current) {
             console.warn(
-              "Detector API health unavailable:",
+              "Camera Agent health unavailable:",
               error
             );
             healthWarningShownRef.current = true;
           }
         }
+      } finally {
+        window.clearTimeout(requestTimeout);
+
+        if (requestController === controller) {
+          requestController = null;
+        }
+
+        scheduleNextCheck(nextDelay);
       }
     }
 
-    const initialLoad = window.setTimeout(
-      loadDetectorHealth,
-      0
-    );
-    const interval = window.setInterval(
-      loadDetectorHealth,
-      15000
-    );
+    nextCheckTimeout = window.setTimeout(loadDetectorHealth, 0);
 
     return () => {
       active = false;
-      window.clearTimeout(initialLoad);
-      window.clearInterval(interval);
+      window.clearTimeout(nextCheckTimeout);
+      window.clearTimeout(requestTimeout);
       requestController?.abort();
     };
-  }, [cameraApiBaseUrl]);
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -610,25 +642,64 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
     now
   );
   const detectorFresh = detectorAge != null && detectorAge <= 5;
+  const agentOnline = agentState === "online";
+  const cameraConnected = agentOnline && Boolean(detectorHealth?.camera_connected);
+  const cameraState = detectorHealth?.camera_state ?? "disconnected";
+  const configuredCameraSource =
+    detectorHealth?.configured_camera_source ?? detectorHealth?.camera_source;
+  const activeCameraSource = detectorHealth?.active_camera_source;
+  const cameraSourceLabel = formatCameraSource(
+    activeCameraSource ?? configuredCameraSource
+  );
   const detectionTransportLabel =
-    detectionTransport === "live"
-      ? "Metrics Live"
-      : detectionTransport === "polling"
-        ? "Polling Fallback"
-        : "Metrics Reconnecting";
+    agentState === "offline"
+      ? "Agent Offline"
+        : agentState === "checking"
+          ? "Checking Agent"
+          : detectionTransport === "live"
+            ? "Metrics Live"
+            : detectionTransport === "polling"
+              ? "Polling Fallback"
+              : detectionTransport === "unavailable"
+                ? "Metrics Unavailable"
+                : "Metrics Reconnecting";
   const detectionTransportTone =
-    detectionTransport === "live"
+    agentOnline && detectionTransport === "live"
       ? "good"
-      : detectionTransport === "polling"
+      : agentOnline && detectionTransport === "polling"
         ? "fallback"
         : "muted";
   const streamUrl = useMemo(
     () => buildStreamUrl(cameraApiBaseUrl, selectedStationId, streamVersion),
-    [cameraApiBaseUrl, selectedStationId, streamVersion]
+    [selectedStationId, streamVersion]
   );
-  const streamKey = `${selectedStationId}:${streamVersion}`;
+  const streamKey = `${selectedStationId}:${streamVersion}:${agentState}:${
+    cameraConnected ? "connected" : "disconnected"
+  }`;
   const streamState =
     streamStatus.key === streamKey ? streamStatus.state : "loading";
+  const streamDisplayState =
+    agentState === "offline"
+      ? "agent-offline"
+      : agentState === "checking"
+        ? "connecting"
+        : !cameraConnected && cameraState === "reconnecting"
+          ? "camera-reconnecting"
+          : !cameraConnected
+            ? "camera-disconnected"
+            : streamState === "offline"
+              ? "stream-offline"
+              : "connecting";
+  const streamBadgeLabel =
+    streamState === "connected" && cameraConnected
+      ? "LIVE FEED"
+      : agentState === "offline"
+        ? "AGENT OFFLINE"
+        : !cameraConnected && cameraState === "reconnecting"
+          ? "RECONNECTING"
+          : !cameraConnected && agentOnline
+            ? "CAMERA OFF"
+            : "CONNECTING";
   const showWeatherBanner =
     toNumber(weather?.rain_6h, 0) >= 20 ||
     toNumber(weather?.rain_1h, 0) >= 8 ||
@@ -645,36 +716,6 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
 
   function handleFullscreen() {
     feedRef.current?.requestFullscreen?.();
-  }
-
-  function handleDetectorUrlSubmit(event) {
-    event.preventDefault();
-
-    const nextUrl = normalizeCameraApiUrl(cameraApiInput);
-
-    try {
-      window.localStorage.setItem(cameraApiStorageKey, nextUrl);
-    } catch (error) {
-      console.warn("Unable to save detector URL override:", error);
-    }
-
-    setCameraApiBaseUrl(nextUrl);
-    setCameraApiInput(nextUrl);
-    setStreamVersion((version) => version + 1);
-    setFlash({ type: "success", text: "Detector URL updated." });
-  }
-
-  function handleDetectorUrlReset() {
-    try {
-      window.localStorage.removeItem(cameraApiStorageKey);
-    } catch (error) {
-      console.warn("Unable to reset detector URL override:", error);
-    }
-
-    setCameraApiBaseUrl(defaultCameraApiUrl);
-    setCameraApiInput(defaultCameraApiUrl);
-    setStreamVersion((version) => version + 1);
-    setFlash({ type: "success", text: "Detector URL reset." });
   }
 
   async function handleSendAlert() {
@@ -803,28 +844,30 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                     <div className="lm-feed-topbar">
                       <span
                         className={`lm-live-badge ${
-                          streamState === "connected" ? "online" : "offline"
+                          streamState === "connected" && cameraConnected
+                            ? "online"
+                            : "offline"
                         }`}
                       >
                         <span className="live-dot" />
-                        {streamState === "connected"
-                          ? "LIVE FEED"
-                          : streamState === "offline"
-                            ? "CAMERA OFF"
-                            : "CONNECTING"}
+                        {streamBadgeLabel}
                       </span>
                       <span className="lm-timestamp">
                         Updated {formatTime(selectedReading?.recorded_at)}
                       </span>
                       <span className="lm-cam-badge">
-                        {activeCamera?.cam_label ?? "Default Camera"}
+                        {cameraSourceLabel}
                       </span>
                       <span
                         className={`lm-cam-badge ${
-                          detectorFresh ? "good" : "muted"
+                          agentOnline && detectorFresh ? "good" : "muted"
                         }`}
                       >
-                        {detectorFresh ? "AI Active" : "AI Waiting"}
+                        {agentState === "offline"
+                          ? "AI Offline"
+                          : detectorFresh
+                            ? "AI Active"
+                            : "AI Waiting"}
                       </span>
                       <span
                         className={`lm-cam-badge ${detectionTransportTone}`}
@@ -835,28 +878,30 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                     </div>
 
                     <div className="lm-viewport">
-                      <img
-                        className={`lm-stream-img ${
-                          streamState === "connected" ? "visible" : ""
-                        }`}
-                        src={streamUrl}
-                        alt="AquaGuard live AI camera feed"
-                        onLoad={() =>
-                          setStreamStatus({
-                            key: streamKey,
-                            state: "connected",
-                          })
-                        }
-                        onError={() =>
-                          setStreamStatus({
-                            key: streamKey,
-                            state: "offline",
-                          })
-                        }
-                      />
+                      {cameraConnected && (
+                        <img
+                          className={`lm-stream-img ${
+                            streamState === "connected" ? "visible" : ""
+                          }`}
+                          src={streamUrl}
+                          alt="AquaGuard live AI camera feed"
+                          onLoad={() =>
+                            setStreamStatus({
+                              key: streamKey,
+                              state: "connected",
+                            })
+                          }
+                          onError={() =>
+                            setStreamStatus({
+                              key: streamKey,
+                              state: "offline",
+                            })
+                          }
+                        />
+                      )}
 
-                      {streamState !== "connected" && (
-                        <StreamPlaceholder streamState={streamState} />
+                      {(!cameraConnected || streamState !== "connected") && (
+                        <StreamPlaceholder state={streamDisplayState} />
                       )}
 
                       <div className="lm-yolo-stats" aria-label="AI stats">
@@ -912,7 +957,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                         />
                       </div>
 
-                      {streamState === "connected" && (
+                      {streamState === "connected" && cameraConnected && (
                         <span className="lm-scanline" aria-hidden="true" />
                       )}
                     </div>
@@ -921,7 +966,8 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                       <div>
                         <strong>{selectedStation?.name}</strong>
                         <span>
-                          {activeCamera?.stream_type ?? "Flask MJPEG"} |{" "}
+                          {activeCamera?.cam_label ?? "Monitoring Camera"} |{" "}
+                          {cameraSourceLabel} |{" "}
                           {selectedStation?.station_code ?? "No code"}
                         </span>
                       </div>
@@ -931,6 +977,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                           type="button"
                           onClick={handleRetryStream}
                           title="Retry stream"
+                          disabled={!cameraConnected}
                         >
                           <RefreshCw size={15} />
                           Retry
@@ -941,6 +988,12 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                           target="_blank"
                           rel="noreferrer"
                           title="Open stream"
+                          aria-disabled={!cameraConnected}
+                          onClick={(event) => {
+                            if (!cameraConnected) {
+                              event.preventDefault();
+                            }
+                          }}
                         >
                           <ExternalLink size={15} />
                           Open
@@ -1075,16 +1128,32 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                     </div>
                     <div className="lm-health-grid">
                       <div className="lm-health-item">
-                        <span>Stream</span>
+                        <span>Camera Agent</span>
                         <strong>
-                          {detectorHealth?.camera_connected === false
-                            ? "offline"
-                            : streamState}
+                          {agentState === "online"
+                            ? "online"
+                            : agentState}
+                        </strong>
+                      </div>
+                      <div className="lm-health-item">
+                        <span>Camera</span>
+                        <strong>
+                          {cameraConnected
+                            ? "connected"
+                            : agentOnline && cameraState === "reconnecting"
+                              ? "reconnecting"
+                              : "disconnected"}
                         </strong>
                       </div>
                       <div className="lm-health-item">
                         <span>Detector</span>
-                        <strong>{detectorFresh ? "active" : "waiting"}</strong>
+                        <strong>
+                          {!agentOnline
+                            ? "unavailable"
+                            : detectorHealth?.yolo_loaded
+                              ? "loaded"
+                              : "not loaded"}
+                        </strong>
                       </div>
                       <div className="lm-health-item">
                         <span>Last AI hit</span>
@@ -1100,38 +1169,9 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                       </div>
                       <div className="lm-health-item">
                         <span>Source</span>
-                        <strong>
-                          {activeCamera?.cam_label ?? "default"}
-                        </strong>
+                        <strong>{cameraSourceLabel}</strong>
                       </div>
                     </div>
-                    {!viewOnly && (
-                      <form
-                        className="lm-detector-form"
-                        onSubmit={handleDetectorUrlSubmit}
-                      >
-                        <label htmlFor="detector-url">Detector URL</label>
-                        <div className="lm-detector-controls">
-                          <input
-                            id="detector-url"
-                            type="url"
-                            value={cameraApiInput}
-                            placeholder="https://detector.example.com"
-                            onChange={(event) =>
-                              setCameraApiInput(event.target.value)
-                            }
-                          />
-                          <button type="submit">Save</button>
-                          <button
-                            type="button"
-                            onClick={handleDetectorUrlReset}
-                          >
-                            Reset
-                          </button>
-                        </div>
-                        <span>{cameraApiBaseUrl}</span>
-                      </form>
-                    )}
                   </div>
 
                   <div className="lm-info-card">

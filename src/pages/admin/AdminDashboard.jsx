@@ -14,12 +14,9 @@ import {
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import useEscapeKey from "../../hooks/useEscapeKey";
+import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
 import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
-
-const cameraApiBaseUrl = (
-  import.meta.env.VITE_CAMERA_API_URL ?? "http://localhost:5000"
-).replace(/\/+$/, "");
 
 let dashboardRiskWarningShown = false;
 
