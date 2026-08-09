@@ -77,6 +77,11 @@ class WindowsLauncherContractTests(unittest.TestCase):
             "detector\\.venv\\scripts\\python.exe",
             normalized,
         )
+        self.assertIn("detector\\.venv\\pyvenv.cfg", normalized)
+        self.assertIn("executable\\s*=", normalized)
+        self.assertIn("ispathrooted", normalized)
+        self.assertIn("$matchesdeclaredbase", normalized)
+        self.assertIn("$declaredpythonargument", normalized)
         self.assertIn("detector\\run_camera_agent.py", normalized)
         self.assertIn("get-ciminstance win32_process", normalized)
         self.assertIn("executablepath", normalized)

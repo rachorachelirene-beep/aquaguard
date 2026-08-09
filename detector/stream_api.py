@@ -2799,7 +2799,6 @@ def detection_stream():
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "X-AquaGuard-Station-Scope": (
                 "single-active-detector"

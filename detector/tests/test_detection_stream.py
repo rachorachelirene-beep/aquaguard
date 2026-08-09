@@ -132,6 +132,10 @@ class DetectionStreamTests(unittest.TestCase):
                 response.headers.get("X-Accel-Buffering"),
                 "no",
             )
+            self.assertIsNone(
+                response.headers.get("Connection"),
+                "WSGI applications must not emit hop-by-hop headers",
+            )
         finally:
             response.close()
 
