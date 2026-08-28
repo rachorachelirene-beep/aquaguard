@@ -71,16 +71,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadSession() {
-      if (!supabase) {
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-        setProfileError(supabaseConfigError);
-        setLoading(false);
-        return;
-      }
+    if (!supabase) {
+      return undefined;
+    }
 
+    async function loadSession() {
       setLoading(true);
 
       const { data, error } = await supabase.auth.getSession();

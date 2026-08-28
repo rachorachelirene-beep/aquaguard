@@ -1,28 +1,47 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+export const supabaseUrl = String(
+  import.meta.env.VITE_SUPABASE_URL ?? ""
+).trim();
 
-const supabaseKey =
+export const supabaseKey = String(
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    ""
+).trim();
 
-export const supabaseConfigError =
+let configError =
   !supabaseUrl || !supabaseKey
-    ? "Missing Supabase environment variables. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file, then restart npm run dev."
+    ? "Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY) in your .env file, then restart npm run dev."
     : "";
 
+let supabaseClient = null;
+
+if (!configError) {
+  try {
+    supabaseClient = createClient(
+      supabaseUrl,
+      supabaseKey
+    );
+  } catch (error) {
+    const initializationMessage =
+      error instanceof Error
+        ? error.message
+        : "client initialization failed";
+
+    configError = `Invalid Supabase configuration: ${initializationMessage}. Check the VITE_SUPABASE_* values in your .env file, then restart npm run dev.`;
+  }
+}
+
+export const supabaseConfigError = configError;
+
 if (supabaseConfigError) {
-  console.error("Missing Supabase environment variables.", {
+  console.error("Supabase configuration error.", {
     hasSupabaseUrl: Boolean(supabaseUrl),
     hasSupabaseKey: Boolean(supabaseKey),
   });
 }
 
-export const supabase = supabaseConfigError
-  ? null
-  : createClient(
-      supabaseUrl,
-      supabaseKey
-    );
+export const supabase = supabaseClient;
 
 export default supabase;

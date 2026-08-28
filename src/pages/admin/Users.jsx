@@ -29,26 +29,25 @@ import {
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useEscapeKey from "../../hooks/useEscapeKey";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../lib/supabase";
+import {
+  supabase,
+  supabaseConfigError,
+  supabaseKey,
+  supabaseUrl,
+} from "../../lib/supabase";
 
 import "./Users.css";
 
 
-const accountCreatorKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-const accountCreatorClient = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  accountCreatorKey,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  }
-);
+const accountCreatorClient = supabaseConfigError
+  ? null
+  : createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
 
 
 const roleOptions = [
