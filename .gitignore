@@ -41,3 +41,12 @@ __pycache__/
 *.sw?
 
 .vercel
+
+# Portable build outputs and caches
+release/
+portable_runtime_cache/
+dist_portable/
+AquaGuard-Portable/
+build/
+*.pid
+*.lock

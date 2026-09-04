@@ -66,7 +66,9 @@ export default function DashboardLayout({
           let lastReadTime = null;
           try {
             lastReadTime = localStorage.getItem(userKey);
-          } catch {}
+          } catch {
+            /* ignore storage read error */
+          }
 
           let residentQuery = supabase
             .from("alerts")
@@ -136,7 +138,7 @@ export default function DashboardLayout({
       );
       window.clearInterval(interval);
     };
-  }, [profile?.role]);
+  }, [profile?.role, profile?.id]);
 
   useEffect(() => {
     function handleEscape(event) {

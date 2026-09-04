@@ -82,8 +82,13 @@ controls rows, not which columns within an admitted row may change.
   `security_invoker`/`security_barrier` compatibility views; the view owner does
   not provide table privileges.
 - `alerts.is_read` is global. An Officer or Responder acknowledgement changes
-  the shared alert row for everyone. Residents cannot change it. Per-user read
-  receipts require a separate schema design and are not claimed here.
+  the shared alert row for everyone. Residents cannot change it in Supabase
+  due to read-only RLS. To allow residents to manage their notification badge,
+  the Resident portal uses a per-user timestamp stored in browser `localStorage`
+  (`aquaguard_resident_last_read_<profile.id>`). This read state is strictly
+  device/browser-local and does not modify the global `alerts` table or synchronize
+  across multiple devices. Full cross-device per-user read receipts would require
+  a dedicated read-receipts database schema and are not claimed here.
 - Officers may toggle any advisory so an on-duty officer can activate or
   deactivate current guidance, but may delete only advisories they issued.
 - No policy is added for `anon`. Trusted backend writes rely on the Supabase
@@ -92,9 +97,9 @@ controls rows, not which columns within an admitted row may change.
 ## Route audit
 
 All `/admin/*`, `/officer/*`, `/responder/*`, and `/resident/*` routes in
-`src/App.jsx` use `ProtectedRoute` with exactly the matching role. The generic
-`/supabase-test` route remains authenticated-only and can read only what RLS
-allows. Route checks are not a substitute for the policies above.
+`src/App.jsx` use `ProtectedRoute` with exactly the matching role. The unrouted
+`SupabaseTest.jsx` development component is not exposed in production routing.
+Route checks are not a substitute for the policies above.
 
 ## Required deployed tests
 

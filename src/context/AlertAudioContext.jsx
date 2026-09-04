@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useCallback,
@@ -33,7 +34,10 @@ export function AlertAudioProvider({ children }) {
   const [activeCriticalAlert, setActiveCriticalAlert] = useState(null);
   const [warningToasts, setWarningToasts] = useState([]);
   const isMutedRef = useRef(isMuted);
-  isMutedRef.current = isMuted;
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   // Unlock browser audio context on first user click or touch anywhere on the page
   useEffect(() => {
