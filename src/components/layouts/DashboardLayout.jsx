@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, VolumeX } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+import { useAlertAudio } from "../../context/AlertAudioContext";
 import { ALERTS_UPDATED_EVENT } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 import Navbar from "../Navbar";
@@ -25,6 +28,7 @@ export default function DashboardLayout({
   children,
 }) {
   const { profile } = useAuth();
+  const { activeCriticalAlert, silenceAlarm } = useAlertAudio();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(() =>
     formatSidebarTime(new Date())
@@ -137,6 +141,47 @@ export default function DashboardLayout({
           showWeather={showAdminTools}
           unreadAlerts={unreadAlerts}
         />
+
+        {activeCriticalAlert && (
+          <div className="critical-alert-banner" role="alert">
+            <div className="critical-alert-content">
+              <AlertTriangle size={22} />
+              <div>
+                <strong>CRITICAL FLOOD RISK DETECTED: </strong>
+                <span>
+                  {activeCriticalAlert.title ||
+                    activeCriticalAlert.message ||
+                    "Water level threshold critically exceeded!"}
+                </span>
+              </div>
+            </div>
+            <div className="critical-alert-actions">
+              <Link
+                to={
+                  profile?.role === "admin"
+                    ? "/admin/alerts"
+                    : profile?.role === "barangay_officer"
+                      ? "/officer/alerts"
+                    : profile?.role === "disaster_responder"
+                      ? "/responder/alerts"
+                      : "/resident/alerts"
+                }
+                className="btn-view-alert"
+                onClick={silenceAlarm}
+              >
+                View Alert
+              </Link>
+              <button
+                type="button"
+                onClick={silenceAlarm}
+                className="btn-silence-alarm"
+              >
+                <VolumeX size={16} />
+                Silence Alarm
+              </button>
+            </div>
+          </div>
+        )}
 
         {children}
       </div>

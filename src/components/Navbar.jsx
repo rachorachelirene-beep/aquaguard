@@ -10,10 +10,13 @@ import {
   Sun,
   Umbrella,
   User,
+  Volume2,
+  VolumeX,
   Zap,
 } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
+import { useAlertAudio } from "../context/AlertAudioContext";
 import { supabase } from "../lib/supabase";
 
 const roleLabels = {
@@ -53,6 +56,7 @@ export default function Navbar({
   unreadAlerts = 0,
 }) {
   const { profile } = useAuth();
+  const { isMuted, toggleMute } = useAlertAudio();
   const [weather, setWeather] = useState(null);
 
   useEffect(() => {
@@ -173,6 +177,23 @@ export default function Navbar({
             </span>
           </Link>
         )}
+
+        <button
+          type="button"
+          onClick={toggleMute}
+          className={`icon-btn ${isMuted ? "sound-muted" : "sound-active"}`}
+          title={
+            isMuted
+              ? "Alert sounds are muted. Click to enable sound alerts"
+              : "Alert sounds are active. Click to mute"
+          }
+          aria-label={isMuted ? "Unmute alert sounds" : "Mute alert sounds"}
+          style={{
+            color: isMuted ? "#f87171" : "inherit",
+          }}
+        >
+          {isMuted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+        </button>
 
         <Link
           to={

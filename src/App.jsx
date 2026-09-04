@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 
 import { AuthProvider } from "./context/AuthContext";
+import { AlertAudioProvider } from "./context/AlertAudioContext";
 import GuestRoute from "./components/GuestRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRedirect from "./components/RoleRedirect";
@@ -54,7 +55,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
+        <AlertAudioProvider>
+          <Routes>
           <Route
             path="/"
             element={<RoleRedirect />}
@@ -451,6 +453,7 @@ export default function App() {
             element={<NotFound />}
           />
         </Routes>
+        </AlertAudioProvider>
       </AuthProvider>
     </BrowserRouter>
   );
