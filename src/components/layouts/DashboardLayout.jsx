@@ -65,12 +65,7 @@ export default function DashboardLayout({
           .from("alerts")
           .select("id", { count: "exact", head: true });
 
-        query =
-          profile?.role === "resident"
-            ? query
-                .eq("is_resolved", false)
-                .in("type", ["warning", "critical"])
-            : query.eq("is_read", false);
+        query = query.eq("is_read", false);
 
         const { count, error } = await query;
 
