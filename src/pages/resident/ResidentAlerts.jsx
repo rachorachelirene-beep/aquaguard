@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, X } from "lucide-react";
+import { CheckCheck, RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 import {
   formatDateTime,
@@ -13,7 +14,9 @@ export default function ResidentAlerts() {
   const [alerts, setAlerts] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [searchText, setSearchText] = useState("");
   const [filter, setFilter] = useState("active");
 
@@ -26,7 +29,7 @@ export default function ResidentAlerts() {
         supabase
           .from("alerts")
           .select(
-            "id, station_id, type, title, message, is_resolved, created_at"
+            "id, station_id, type, title, message, is_read, is_resolved, created_at"
           )
           .order("created_at", { ascending: false })
           .limit(300),
@@ -90,6 +93,47 @@ export default function ResidentAlerts() {
   }, [alerts, filter, searchText, stationMap]);
 
   const hasFilters = searchText || filter !== "active";
+  const unreadCount = alerts.filter((alert) => !alert.is_read).length;
+
+  async function markAllAsRead() {
+    const unreadIds = alerts
+      .filter((alert) => !alert.is_read)
+      .map((alert) => alert.id);
+
+    if (unreadIds.length === 0) {
+      setSuccessMessage("All alerts are already marked as read.");
+      return;
+    }
+
+    try {
+      setActionLoading("mark-all");
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const { error } = await supabase
+        .from("alerts")
+        .update({ is_read: true })
+        .in("id", unreadIds);
+
+      if (error) {
+        throw error;
+      }
+
+      setAlerts((current) =>
+        current.map((alert) => ({ ...alert, is_read: true }))
+      );
+
+      notifyAlertsUpdated();
+      setSuccessMessage("All alerts marked as read.");
+
+      window.setTimeout(() => setSuccessMessage(""), 4000);
+    } catch (error) {
+      console.error("Mark-all-read error:", error);
+      setErrorMessage(error.message || "Unable to mark all alerts as read.");
+    } finally {
+      setActionLoading("");
+    }
+  }
 
   return (
     <DashboardLayout
@@ -97,21 +141,56 @@ export default function ResidentAlerts() {
       description="Official warning and critical flood updates for residents."
     >
       <main className="page-content officer-page">
+        {successMessage && (
+          <div className="flash success">{successMessage}</div>
+        )}
+        {errorMessage && (
+          <div className="flash error">{errorMessage}</div>
+        )}
         <section className="section-card">
           <div className="section-title">
             <span>Flood Alerts</span>
-            <button
-              className="btn-cancel officer-icon-button"
-              type="button"
-              onClick={loadAlerts}
-              disabled={loading}
-            >
-              <RefreshCw
-                size={16}
-                className={loading ? "officer-spin" : ""}
-              />
-              Refresh
-            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {unreadCount > 0 && (
+                <button
+                  className="btn-submit officer-icon-button"
+                  type="button"
+                  onClick={markAllAsRead}
+                  disabled={actionLoading === "mark-all"}
+                  title={`Mark all ${unreadCount} unread alerts as read`}
+                >
+                  <CheckCheck size={16} />
+                  Mark All Read
+                  {unreadCount > 0 && (
+                    <span
+                      style={{
+                        background: "#dc2626",
+                        color: "#fff",
+                        borderRadius: "9px",
+                        padding: "1px 6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        marginLeft: "2px",
+                      }}
+                    >
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              <button
+                className="btn-cancel officer-icon-button"
+                type="button"
+                onClick={loadAlerts}
+                disabled={loading}
+              >
+                <RefreshCw
+                  size={16}
+                  className={loading ? "officer-spin" : ""}
+                />
+                Refresh
+              </button>
+            </div>
           </div>
 
           <div className="officer-toolbar resident-toolbar">

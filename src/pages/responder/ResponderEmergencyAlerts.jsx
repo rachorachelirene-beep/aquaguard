@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, RefreshCw, Search, X } from "lucide-react";
+import { CheckCheck, Eye, RefreshCw, Search, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
@@ -163,6 +163,38 @@ export default function ResponderEmergencyAlerts() {
     setStatusFilter("unresolved");
   }
 
+  async function markAllAsRead() {
+    const unreadIds = alerts
+      .filter((alert) => !alert.is_read)
+      .map((alert) => alert.id);
+
+    if (unreadIds.length === 0) {
+      setFlash({ type: "success", text: "All alerts are already acknowledged." });
+      return;
+    }
+
+    setActionLoading("mark-all");
+    setFlash(null);
+
+    const { error } = await supabase
+      .from("alerts")
+      .update({ is_read: true })
+      .in("id", unreadIds);
+
+    setActionLoading("");
+
+    if (error) {
+      setFlash({ type: "error", text: error.message || "Unable to acknowledge all alerts." });
+      return;
+    }
+
+    setAlerts((current) =>
+      current.map((alert) => ({ ...alert, is_read: true }))
+    );
+    notifyAlertsUpdated();
+    setFlash({ type: "success", text: `${unreadIds.length} alert${unreadIds.length === 1 ? "" : "s"} acknowledged.` });
+  }
+
   const hasFilters =
     searchText || typeFilter !== "all" || statusFilter !== "unresolved";
 
@@ -200,18 +232,45 @@ export default function ResponderEmergencyAlerts() {
         <section className="section-card">
           <div className="section-title">
             <span>Alert Records</span>
-            <button
-              className="btn-cancel officer-icon-button"
-              type="button"
-              onClick={loadAlerts}
-              disabled={loading}
-            >
-              <RefreshCw
-                size={16}
-                className={loading ? "officer-spin" : ""}
-              />
-              Refresh
-            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {unreadCount > 0 && (
+                <button
+                  className="btn-submit officer-icon-button"
+                  type="button"
+                  onClick={markAllAsRead}
+                  disabled={actionLoading === "mark-all"}
+                  title={`Acknowledge all ${unreadCount} unread alerts`}
+                >
+                  <CheckCheck size={16} />
+                  Acknowledge All
+                  <span
+                    style={{
+                      background: "#dc2626",
+                      color: "#fff",
+                      borderRadius: "9px",
+                      padding: "1px 6px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      marginLeft: "2px",
+                    }}
+                  >
+                    {unreadCount}
+                  </span>
+                </button>
+              )}
+              <button
+                className="btn-cancel officer-icon-button"
+                type="button"
+                onClick={loadAlerts}
+                disabled={loading}
+              >
+                <RefreshCw
+                  size={16}
+                  className={loading ? "officer-spin" : ""}
+                />
+                Refresh
+              </button>
+            </div>
           </div>
 
           <div className="officer-toolbar">
