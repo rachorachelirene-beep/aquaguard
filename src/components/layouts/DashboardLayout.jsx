@@ -28,7 +28,12 @@ export default function DashboardLayout({
   children,
 }) {
   const { profile } = useAuth();
-  const { activeCriticalAlert, silenceAlarm } = useAlertAudio();
+  const {
+    activeCriticalAlert,
+    silenceAlarm,
+    warningToasts,
+    dismissWarningToast,
+  } = useAlertAudio();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(() =>
     formatSidebarTime(new Date())
@@ -142,49 +147,106 @@ export default function DashboardLayout({
           unreadAlerts={unreadAlerts}
         />
 
-        {activeCriticalAlert && (
-          <div className="critical-alert-banner" role="alert">
-            <div className="critical-alert-content">
-              <AlertTriangle size={22} />
-              <div>
-                <strong>CRITICAL FLOOD RISK DETECTED: </strong>
-                <span>
-                  {activeCriticalAlert.title ||
-                    activeCriticalAlert.message ||
-                    "Water level threshold critically exceeded!"}
-                </span>
-              </div>
-            </div>
-            <div className="critical-alert-actions">
-              <Link
-                to={
-                  profile?.role === "admin"
-                    ? "/admin/alerts"
-                    : profile?.role === "barangay_officer"
-                      ? "/officer/alerts"
-                    : profile?.role === "disaster_responder"
-                      ? "/responder/alerts"
-                      : "/resident/alerts"
-                }
-                className="btn-view-alert"
-                onClick={silenceAlarm}
-              >
-                View Alert
-              </Link>
-              <button
-                type="button"
-                onClick={silenceAlarm}
-                className="btn-silence-alarm"
-              >
-                <VolumeX size={16} />
-                Silence Alarm
-              </button>
-            </div>
-          </div>
-        )}
-
         {children}
       </div>
+
+      {/* Fixed critical alarm banner — always visible even when scrolling */}
+      {activeCriticalAlert && (
+        <div className="critical-alert-banner" role="alert">
+          <div className="critical-alert-content">
+            <AlertTriangle size={22} />
+            <div>
+              <strong>⚠ CRITICAL FLOOD RISK DETECTED</strong>
+              {activeCriticalAlert.station_id && (
+                <span className="critical-station-tag">
+                  Station #{activeCriticalAlert.station_id}
+                </span>
+              )}
+              <span className="critical-alert-message">
+                {activeCriticalAlert.title ||
+                  activeCriticalAlert.message ||
+                  "Water level threshold critically exceeded!"}
+              </span>
+            </div>
+          </div>
+          <div className="critical-alert-actions">
+            <Link
+              to={
+                profile?.role === "admin"
+                  ? "/admin/alerts"
+                  : profile?.role === "barangay_officer"
+                    ? "/officer/alerts"
+                  : profile?.role === "disaster_responder"
+                    ? "/responder/alerts"
+                    : "/resident/alerts"
+              }
+              className="btn-view-alert"
+              onClick={silenceAlarm}
+            >
+              View Alert
+            </Link>
+            <button
+              type="button"
+              onClick={silenceAlarm}
+              className="btn-silence-alarm"
+            >
+              <VolumeX size={16} />
+              Silence Alarm
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Warning toast notifications — lower right, auto-dismiss after 7s */}
+      {warningToasts.length > 0 && (
+        <div className="warning-toast-container" aria-live="polite">
+          {warningToasts.map((toast) => (
+            <div key={toast.id} className="warning-toast" role="status">
+              <div className="warning-toast-content">
+                <AlertTriangle size={18} className="warning-toast-icon" />
+                <div className="warning-toast-text">
+                  <strong>Flood Warning Alert</strong>
+                  {toast.alert.station_id && (
+                    <span className="warning-toast-station">
+                      Station #{toast.alert.station_id}
+                    </span>
+                  )}
+                  <span className="warning-toast-msg">
+                    {toast.alert.title ||
+                      toast.alert.message ||
+                      "Water level elevated — monitor situation."}
+                  </span>
+                </div>
+              </div>
+              <div className="warning-toast-actions">
+                <Link
+                  to={
+                    profile?.role === "admin"
+                      ? "/admin/alerts"
+                      : profile?.role === "barangay_officer"
+                        ? "/officer/alerts"
+                      : profile?.role === "disaster_responder"
+                        ? "/responder/alerts"
+                        : "/resident/alerts"
+                  }
+                  className="warning-toast-view"
+                  onClick={() => dismissWarningToast(toast.id)}
+                >
+                  View
+                </Link>
+                <button
+                  type="button"
+                  className="warning-toast-close"
+                  onClick={() => dismissWarningToast(toast.id)}
+                  aria-label="Dismiss warning"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

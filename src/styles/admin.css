@@ -3685,8 +3685,44 @@ textarea.form-input {
   background: transparent;
 }
 
-/* Critical Alert Audio & Warning Banner */
+/* ------------------------------------------------------------------ */
+/* Notification badge (numeric count on Bell)                          */
+/* ------------------------------------------------------------------ */
+.notif-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 9px;
+  border: 2px solid var(--aq-surface, #fff);
+  pointer-events: none;
+}
+
+/* Sound toggle label button */
+.sound-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Critical Alert Banner — FIXED at bottom of viewport                */
+/* ------------------------------------------------------------------ */
 .critical-alert-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3694,16 +3730,15 @@ textarea.form-input {
   gap: 12px;
   background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%);
   color: #ffffff;
-  padding: 12px 20px;
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
-  animation: pulse-banner 1.5s infinite;
-  z-index: 90;
+  padding: 14px 24px;
+  box-shadow: 0 -4px 20px rgba(220, 38, 38, 0.45);
+  animation: pulse-banner 1.5s ease-in-out infinite;
 }
 
 @keyframes pulse-banner {
-  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6); }
-  70% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  0%   { box-shadow: 0 -4px 20px rgba(220, 38, 38, 0.45); }
+  50%  { box-shadow: 0 -4px 32px rgba(220, 38, 38, 0.75); }
+  100% { box-shadow: 0 -4px 20px rgba(220, 38, 38, 0.45); }
 }
 
 .critical-alert-content {
@@ -3711,12 +3746,29 @@ textarea.form-input {
   align-items: center;
   gap: 12px;
   font-size: 14px;
+  flex: 1;
+}
+
+.critical-station-tag {
+  display: inline-block;
+  margin: 0 8px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.critical-alert-message {
+  opacity: 0.92;
 }
 
 .critical-alert-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .btn-silence-alarm {
@@ -3726,16 +3778,17 @@ textarea.form-input {
   background: #ffffff;
   color: #b91c1c;
   border: none;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13px;
-  padding: 6px 14px;
+  padding: 7px 16px;
   border-radius: 6px;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.1s ease;
 }
 
 .btn-silence-alarm:hover {
-  opacity: 0.9;
+  opacity: 0.88;
+  transform: scale(1.02);
 }
 
 .btn-view-alert {
@@ -3746,12 +3799,127 @@ textarea.form-input {
   text-decoration: none;
   font-weight: 500;
   font-size: 13px;
-  padding: 6px 14px;
+  padding: 7px 16px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  transition: background 0.2s ease;
 }
 
 .btn-view-alert:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* ------------------------------------------------------------------ */
+/* Warning Toast — lower-right corner, auto-dismiss after 7s          */
+/* ------------------------------------------------------------------ */
+.warning-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.warning-toast {
+  background: #ffffff;
+  border-left: 4px solid #d97706;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: all;
+  animation: slide-in-toast 0.3s ease;
+}
+
+@keyframes slide-in-toast {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);   opacity: 1; }
+}
+
+.warning-toast-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+}
+
+.warning-toast-icon {
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.warning-toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: #172536;
+}
+
+.warning-toast-text strong {
+  font-size: 13px;
+  color: #92400e;
+}
+
+.warning-toast-station {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  letter-spacing: 0.03em;
+}
+
+.warning-toast-msg {
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.4;
+}
+
+.warning-toast-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.warning-toast-view {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d97706;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.warning-toast-view:hover {
+  text-decoration: underline;
+}
+
+.warning-toast-close {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.warning-toast-close:hover {
+  color: #6b7280;
+}
+
+/* When critical banner is active, push toast up so it's not hidden behind banner */
+.critical-alert-banner ~ .warning-toast-container {
+  bottom: 80px;
 }
 

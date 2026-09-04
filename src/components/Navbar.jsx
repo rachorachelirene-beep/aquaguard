@@ -181,7 +181,7 @@ export default function Navbar({
         <button
           type="button"
           onClick={toggleMute}
-          className={`icon-btn ${isMuted ? "sound-muted" : "sound-active"}`}
+          className={`icon-btn sound-toggle-btn ${isMuted ? "sound-muted" : "sound-active"}`}
           title={
             isMuted
               ? "Alert sounds are muted. Click to enable sound alerts"
@@ -190,9 +190,21 @@ export default function Navbar({
           aria-label={isMuted ? "Unmute alert sounds" : "Mute alert sounds"}
           style={{
             color: isMuted ? "#f87171" : "inherit",
+            gap: "4px",
+            width: "auto",
+            padding: "0 10px",
+            fontSize: "12px",
+            fontWeight: 600,
           }}
         >
-          {isMuted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+          {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+          <span style={{ display: "inline" }}>
+            {isMuted
+              ? "MUTED"
+              : profile?.role === "resident"
+                ? "Alerts: ON"
+                : "ON"}
+          </span>
         </button>
 
         <Link
@@ -210,7 +222,11 @@ export default function Navbar({
           aria-label="Open alerts"
         >
           <Bell size={19} />
-          {unreadAlerts > 0 && <span className="notif-dot" />}
+          {unreadAlerts > 0 && (
+            <span className="notif-badge">
+              {unreadAlerts > 99 ? "99+" : unreadAlerts}
+            </span>
+          )}
         </Link>
 
         {profile?.role === "admin" && (

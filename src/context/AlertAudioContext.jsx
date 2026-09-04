@@ -31,6 +31,7 @@ export function AlertAudioProvider({ children }) {
   });
 
   const [activeCriticalAlert, setActiveCriticalAlert] = useState(null);
+  const [warningToasts, setWarningToasts] = useState([]);
   const isMutedRef = useRef(isMuted);
   isMutedRef.current = isMuted;
 
@@ -75,6 +76,10 @@ export function AlertAudioProvider({ children }) {
     setActiveCriticalAlert(null);
   }, []);
 
+  const dismissWarningToast = useCallback((toastId) => {
+    setWarningToasts((prev) => prev.filter((t) => t.id !== toastId));
+  }, []);
+
   const testSound = useCallback(() => {
     unlockAudio();
     playWarningChime();
@@ -106,6 +111,15 @@ export function AlertAudioProvider({ children }) {
           });
         }
       } else if (alert.type === "warning") {
+        const toastId = `toast-${Date.now()}`;
+        const newToast = { id: toastId, alert };
+        setWarningToasts((prev) => [...prev, newToast]);
+
+        // Auto-dismiss warning toast after 7 seconds
+        window.setTimeout(() => {
+          setWarningToasts((prev) => prev.filter((t) => t.id !== toastId));
+        }, 7000);
+
         if (!isMutedRef.current) {
           unlockAudio().then(() => {
             playWarningChime();
@@ -151,6 +165,8 @@ export function AlertAudioProvider({ children }) {
         silenceAlarm,
         testSound,
         activeCriticalAlert,
+        warningToasts,
+        dismissWarningToast,
       }}
     >
       {children}
