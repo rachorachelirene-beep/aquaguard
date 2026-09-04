@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCheck, RefreshCw, Search, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import { useAuth } from "../../context/AuthContext";
 import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
 import {
@@ -93,46 +94,40 @@ export default function ResidentAlerts() {
   }, [alerts, filter, searchText, stationMap]);
 
   const hasFilters = searchText || filter !== "active";
-  const unreadCount = alerts.filter((alert) => !alert.is_read).length;
-
-  async function markAllAsRead() {
-    const unreadIds = alerts
-      .filter((alert) => !alert.is_read)
-      .map((alert) => alert.id);
-
-    if (unreadIds.length === 0) {
-      setSuccessMessage("All alerts are already marked as read.");
-      return;
-    }
-
+  const { profile } = useAuth();
+  const userStorageKey = `aquaguard_resident_last_read_${profile?.id || "anon"}`;
+  const [lastReadTime, setLastReadTime] = useState(() => {
     try {
-      setActionLoading("mark-all");
-      setErrorMessage("");
-      setSuccessMessage("");
-
-      const { error } = await supabase
-        .from("alerts")
-        .update({ is_read: true })
-        .in("id", unreadIds);
-
-      if (error) {
-        throw error;
-      }
-
-      setAlerts((current) =>
-        current.map((alert) => ({ ...alert, is_read: true }))
-      );
-
-      notifyAlertsUpdated();
-      setSuccessMessage("All alerts marked as read.");
-
-      window.setTimeout(() => setSuccessMessage(""), 4000);
-    } catch (error) {
-      console.error("Mark-all-read error:", error);
-      setErrorMessage(error.message || "Unable to mark all alerts as read.");
-    } finally {
-      setActionLoading("");
+      return localStorage.getItem(userStorageKey);
+    } catch {
+      return null;
     }
+  });
+
+  const unreadCount = alerts.filter(
+    (alert) =>
+      (!lastReadTime || new Date(alert.created_at) > new Date(lastReadTime)) &&
+      ["warning", "critical"].includes(alert.type)
+  ).length;
+
+  function markAllAsRead() {
+    setActionLoading("mark-all");
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const now = new Date().toISOString();
+    try {
+      localStorage.setItem(userStorageKey, now);
+    } catch (e) {
+      console.warn("Could not save resident read time:", e);
+    }
+
+    setLastReadTime(now);
+    notifyAlertsUpdated();
+    setSuccessMessage("All alerts marked as read.");
+    setActionLoading("");
+
+    window.setTimeout(() => setSuccessMessage(""), 4000);
   }
 
   return (

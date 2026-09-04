@@ -61,6 +61,37 @@ export default function DashboardLayout({
       requestInFlight = true;
 
       try {
+        if (profile?.role === "resident") {
+          const userKey = `aquaguard_resident_last_read_${profile?.id || "anon"}`;
+          let lastReadTime = null;
+          try {
+            lastReadTime = localStorage.getItem(userKey);
+          } catch {}
+
+          let residentQuery = supabase
+            .from("alerts")
+            .select("id", { count: "exact", head: true })
+            .in("type", ["warning", "critical"]);
+
+          if (lastReadTime) {
+            residentQuery = residentQuery.gt("created_at", lastReadTime);
+          }
+
+          const { count, error } = await residentQuery;
+
+          if (error) {
+            throw error;
+          }
+
+          if (!active) {
+            return;
+          }
+
+          setUnreadAlerts(count ?? 0);
+          warningShown = false;
+          return;
+        }
+
         let query = supabase
           .from("alerts")
           .select("id", { count: "exact", head: true });
