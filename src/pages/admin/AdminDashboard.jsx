@@ -14,7 +14,10 @@ import {
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import useEscapeKey from "../../hooks/useEscapeKey";
-import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
+import {
+  cameraAgentBaseUrl as cameraApiBaseUrl,
+  isCameraAgentReachable,
+} from "../../lib/cameraAgent";
 import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 
@@ -150,6 +153,10 @@ function formatFreshness(value, staleAfterMs) {
 }
 
 async function fetchCombinedRisk(stationId) {
+  if (!isCameraAgentReachable()) {
+    return null;
+  }
+
   try {
     const payload = await fetchJsonWithTimeout(
       `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
@@ -308,7 +315,7 @@ function AdminDashboardContent() {
         .from("water_levels")
         .select("id, station_id, level_m, rainfall_mm, recorded_at")
         .order("recorded_at", { ascending: false })
-        .limit(300),
+        .limit(80),
       supabase
         .from("alerts")
         .select(

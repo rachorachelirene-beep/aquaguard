@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -19,18 +20,40 @@ export const roleRoutes = {
   resident: "/resident/dashboard",
 };
 
-async function fetchProfile(userId) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, name, email, role, status, phone, address, avatar_url")
-    .eq("id", userId)
-    .single();
+const PROFILE_FETCH_TIMEOUT_MS = 8000;
 
-  if (error) {
-    throw error;
+async function fetchProfile(userId, timeoutMs = PROFILE_FETCH_TIMEOUT_MS) {
+  let timerId = null;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = window.setTimeout(() => {
+      reject(
+        new Error(
+          "Profile request timed out. Please verify your connection or try again."
+        )
+      );
+    }, timeoutMs);
+  });
+
+  try {
+    const profilePromise = supabase
+      .from("profiles")
+      .select("id, name, email, role, status, phone, address, avatar_url")
+      .eq("id", userId)
+      .single();
+
+    const result = await Promise.race([profilePromise, timeoutPromise]);
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return result.data;
+  } finally {
+    if (timerId !== null) {
+      window.clearTimeout(timerId);
+    }
   }
-
-  return data;
 }
 
 export function AuthProvider({ children }) {
@@ -39,6 +62,9 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState("");
+
+  const inFlightProfilePromiseRef = useRef(null);
+  const inFlightUserIdRef = useRef(null);
 
   const loadProfile = useCallback(async (currentUser) => {
     if (!supabase) {
@@ -53,19 +79,35 @@ export function AuthProvider({ children }) {
       return null;
     }
 
-    try {
-      const nextProfile = await fetchProfile(currentUser.id);
-      setProfile(nextProfile);
-      setProfileError("");
-      return nextProfile;
-    } catch (error) {
-      console.error("Profile load error:", error);
-      setProfile(null);
-      setProfileError(
-        error.message || "Unable to load your AquaGuard profile."
-      );
-      return null;
+    if (
+      inFlightProfilePromiseRef.current &&
+      inFlightUserIdRef.current === currentUser.id
+    ) {
+      return inFlightProfilePromiseRef.current;
     }
+
+    inFlightUserIdRef.current = currentUser.id;
+    const fetchPromise = (async () => {
+      try {
+        const nextProfile = await fetchProfile(currentUser.id);
+        setProfile(nextProfile);
+        setProfileError("");
+        return nextProfile;
+      } catch (error) {
+        console.error("Profile load error:", error);
+        setProfile(null);
+        setProfileError(
+          error.message || "Unable to load your AquaGuard profile."
+        );
+        return null;
+      } finally {
+        inFlightProfilePromiseRef.current = null;
+        inFlightUserIdRef.current = null;
+      }
+    })();
+
+    inFlightProfilePromiseRef.current = fetchPromise;
+    return fetchPromise;
   }, []);
 
   useEffect(() => {
@@ -75,34 +117,38 @@ export function AuthProvider({ children }) {
       return undefined;
     }
 
+    let initialBootDone = false;
+
     async function loadSession() {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.getSession();
+      try {
+        const { data, error } = await supabase.auth.getSession();
 
-      if (!isMounted) {
-        return;
-      }
+        if (!isMounted) {
+          return;
+        }
 
-      if (error) {
-        console.error("Session load error:", error);
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-        setProfileError(error.message || "Unable to load session.");
-        setLoading(false);
-        return;
-      }
+        if (error) {
+          console.error("Session load error:", error);
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setProfileError(error.message || "Unable to load session.");
+          return;
+        }
 
-      const nextSession = data.session ?? null;
-      const nextUser = nextSession?.user ?? null;
+        const nextSession = data.session ?? null;
+        const nextUser = nextSession?.user ?? null;
 
-      setSession(nextSession);
-      setUser(nextUser);
-      await loadProfile(nextUser);
-
-      if (isMounted) {
-        setLoading(false);
+        setSession(nextSession);
+        setUser(nextUser);
+        await loadProfile(nextUser);
+      } finally {
+        initialBootDone = true;
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
@@ -111,13 +157,22 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      const nextUser = nextSession?.user ?? null;
+      if (!isMounted) {
+        return;
+      }
 
+      const nextUser = nextSession?.user ?? null;
       setSession(nextSession);
       setUser(nextUser);
-      setLoading(true);
-      await loadProfile(nextUser);
-      setLoading(false);
+
+      // Only re-trigger loadProfile if boot has finished and user changed
+      if (initialBootDone) {
+        setLoading(true);
+        await loadProfile(nextUser);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     });
 
     return () => {

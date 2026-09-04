@@ -11,7 +11,10 @@ import {
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
-import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
+import {
+  cameraAgentBaseUrl as cameraApiBaseUrl,
+  isCameraAgentReachable,
+} from "../../lib/cameraAgent";
 import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 import {
@@ -120,7 +123,7 @@ export default function ResponderDashboard() {
           .from("water_levels")
           .select("id, station_id, level_m, rainfall_mm, recorded_at")
           .order("recorded_at", { ascending: false })
-          .limit(500),
+          .limit(80),
         supabase
           .from("alerts")
           .select(
@@ -187,22 +190,26 @@ export default function ResponderDashboard() {
 
         nextDetection = detectionResult.data ?? null;
 
-        try {
-          const payload = await fetchJsonWithTimeout(
-            `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
-              primaryStationId
-            )}`
-          );
-          nextRisk = payload?.combined_risk ?? null;
-          riskWarningShownRef.current = false;
-        } catch (error) {
-          if (!riskWarningShownRef.current) {
-            console.warn(
-              "Responder dashboard combined risk unavailable:",
-              error
+        if (isCameraAgentReachable()) {
+          try {
+            const payload = await fetchJsonWithTimeout(
+              `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
+                primaryStationId
+              )}`
             );
-            riskWarningShownRef.current = true;
+            nextRisk = payload?.combined_risk ?? null;
+            riskWarningShownRef.current = false;
+          } catch (error) {
+            if (!riskWarningShownRef.current) {
+              console.warn(
+                "Responder dashboard combined risk unavailable:",
+                error
+              );
+              riskWarningShownRef.current = true;
+            }
+            nextRiskUnavailable = true;
           }
+        } else {
           nextRiskUnavailable = true;
         }
       }

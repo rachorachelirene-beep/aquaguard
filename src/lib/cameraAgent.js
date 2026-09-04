@@ -36,6 +36,22 @@ export function resolveCameraAgentBaseUrl({
 
 export const cameraAgentBaseUrl = resolveCameraAgentBaseUrl();
 
+export function isCameraAgentReachable() {
+  if (!cameraAgentBaseUrl) {
+    return false;
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    cameraAgentBaseUrl.startsWith("http://")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 
 export function buildCameraAgentUrl(path = "") {
   const normalizedPath = String(path ?? "").trim();

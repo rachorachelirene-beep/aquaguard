@@ -1,7 +1,18 @@
 export async function fetchJsonWithTimeout(
   url,
-  { timeoutMs = 5000, ...options } = {}
+  { timeoutMs = 1800, ...options } = {}
 ) {
+  if (
+    !url ||
+    (typeof window !== "undefined" &&
+      window.location.protocol === "https:" &&
+      url.startsWith("http://"))
+  ) {
+    throw new Error(
+      "Cannot query insecure HTTP camera endpoint from HTTPS origin."
+    );
+  }
+
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 

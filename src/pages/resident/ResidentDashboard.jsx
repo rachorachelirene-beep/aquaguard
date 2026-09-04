@@ -4,7 +4,10 @@ import { Bell, CloudRain, ShieldAlert, Waves } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useRealtimeDetection from "../../hooks/useRealtimeDetection";
-import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
+import {
+  cameraAgentBaseUrl as cameraApiBaseUrl,
+  isCameraAgentReachable,
+} from "../../lib/cameraAgent";
 import { fetchJsonWithTimeout } from "../../lib/fetchJson";
 import { supabase } from "../../lib/supabase";
 import {
@@ -96,14 +99,14 @@ export default function ResidentDashboard() {
           .from("water_levels")
           .select("id, station_id, level_m, rainfall_mm, recorded_at")
           .order("recorded_at", { ascending: false })
-          .limit(300),
+          .limit(80),
         supabase
           .from("yolo_detections")
           .select(
             "id, station_id, level_m, confidence, water_coverage, detected_at"
           )
           .order("detected_at", { ascending: false })
-          .limit(100),
+          .limit(30),
         supabase
           .from("alerts")
           .select(
@@ -127,7 +130,7 @@ export default function ResidentDashboard() {
             "id, station_id, temperature, precipitation, rain_1h, rain_6h, wind_speed, weather_code, condition_text, recorded_at"
           )
           .order("recorded_at", { ascending: false })
-          .limit(300),
+          .limit(40),
         supabase
           .from("announcements")
           .select("id, title, body, created_at, created_by")
@@ -185,7 +188,7 @@ export default function ResidentDashboard() {
       let nextRisk = null;
       let nextRiskUnavailable = false;
 
-      if (primaryStationId != null) {
+      if (primaryStationId != null && isCameraAgentReachable()) {
         try {
           const payload = await fetchJsonWithTimeout(
             `${cameraApiBaseUrl}/flood_risk?station_id=${encodeURIComponent(
@@ -201,6 +204,8 @@ export default function ResidentDashboard() {
           }
           nextRiskUnavailable = true;
         }
+      } else {
+        nextRiskUnavailable = true;
       }
 
       setStations(nextStations);
