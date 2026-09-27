@@ -29,6 +29,8 @@ export default function DashboardLayout({
 }) {
   const { profile } = useAuth();
   const {
+    isMuted,
+    isAudioBlocked,
     activeCriticalAlert,
     silenceAlarm,
     warningToasts,
@@ -174,6 +176,12 @@ export default function DashboardLayout({
           showWeather={showAdminTools}
           unreadAlerts={unreadAlerts}
         />
+
+        {!isMuted && isAudioBlocked && (
+          <div className="audio-unlock-banner" role="status">
+            Alert sounds are paused by browser policy. Click anywhere to enable alert sounds.
+          </div>
+        )}
 
         {children}
       </div>

@@ -3707,6 +3707,22 @@ textarea.form-input {
 }
 
 /* Sound toggle label button */
+.audio-unlock-banner {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sound-toggle-btn.sound-blocked {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
 .sound-toggle-btn {
   display: inline-flex;
   align-items: center;

@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -11,6 +12,7 @@ import { useAuth } from "./AuthContext";
 import { supabase } from "../lib/supabase";
 import { notifyAlertsUpdated } from "../lib/alertEvents";
 import {
+  getAudioContext,
   playWarningChime,
   startCriticalAlarm,
   stopCriticalAlarm,
@@ -34,35 +36,59 @@ export function AlertAudioProvider({ children }) {
   const [activeCriticalAlert, setActiveCriticalAlert] = useState(null);
   const [warningToasts, setWarningToasts] = useState([]);
   const isMutedRef = useRef(isMuted);
+  const processedAlertIdsRef = useRef(new Set());
+  const toastTimersRef = useRef(new Set());
+  const audioContextRef = useRef(null);
+  const [audioState, setAudioState] = useState("suspended");
+  const isAudioUnlocked = audioState === "running";
+  const isAudioBlocked = !isMuted && !isAudioUnlocked;
+
+  const unlockAlertAudio = useCallback(async () => {
+    try {
+      await unlockAudio();
+    } catch (error) {
+      console.warn("Could not unlock alert audio:", error);
+    }
+    const state = audioContextRef.current?.state;
+    if (state) setAudioState(state);
+    return state === "running";
+  }, []);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
 
-  // Unlock browser audio context on first user click or touch anywhere on the page
+  // Track browser suspension and retry unlocking on subsequent interactions.
   useEffect(() => {
+    const context = getAudioContext();
+    audioContextRef.current = context;
+    function syncAudioState() {
+      setAudioState(context?.state || "unavailable");
+    }
+    syncAudioState();
+    context?.addEventListener("statechange", syncAudioState);
     function handleFirstInteraction() {
-      unlockAudio();
-      window.removeEventListener("click", handleFirstInteraction);
-      window.removeEventListener("keydown", handleFirstInteraction);
-      window.removeEventListener("touchstart", handleFirstInteraction);
+      if (context?.state !== "running") void unlockAlertAudio();
     }
 
-    window.addEventListener("click", handleFirstInteraction, { once: true });
-    window.addEventListener("keydown", handleFirstInteraction, { once: true });
-    window.addEventListener("touchstart", handleFirstInteraction, { once: true });
+    window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("keydown", handleFirstInteraction);
+    window.addEventListener("touchstart", handleFirstInteraction);
 
     return () => {
       window.removeEventListener("click", handleFirstInteraction);
       window.removeEventListener("keydown", handleFirstInteraction);
       window.removeEventListener("touchstart", handleFirstInteraction);
+      context?.removeEventListener("statechange", syncAudioState);
+      audioContextRef.current = null;
     };
-  }, []);
+  }, [unlockAlertAudio]);
 
   // Save mute preference
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const next = !prev;
+      isMutedRef.current = next;
       try {
         localStorage.setItem(STORAGE_KEY_MUTED, String(next));
       } catch (e) {
@@ -85,14 +111,31 @@ export function AlertAudioProvider({ children }) {
   }, []);
 
   const testSound = useCallback(() => {
-    unlockAudio();
-    playWarningChime();
-  }, []);
+    if (!isMutedRef.current) {
+      void unlockAlertAudio();
+      playWarningChime();
+    }
+  }, [unlockAlertAudio]);
+
+  useEffect(() => {
+    if (!profile) stopCriticalAlarm();
+  }, [profile]);
 
   // Handle incoming alert
   const handleIncomingAlert = useCallback(
     (alert) => {
-      if (!alert) return;
+      if (!alert || !profile) return;
+      const key = alert.id != null
+        ? `id:${alert.id}`
+        : JSON.stringify([
+            alert.created_at, alert.station_id, alert.type,
+            alert.title, alert.message,
+          ]);
+      const processed = processedAlertIdsRef.current;
+      if (processed.has(key)) return;
+      processed.add(key);
+      if (processed.size > 300) processed.delete(processed.values().next().value);
+      const type = String(alert.type || "").trim().toLowerCase();
 
       // Broadcast update for badge counters across Navbar/Sidebar
       notifyAlertsUpdated();
@@ -101,41 +144,46 @@ export function AlertAudioProvider({ children }) {
       const userRole = profile?.role;
       if (
         userRole === "resident" &&
-        alert.type !== "warning" &&
-        alert.type !== "critical"
+        type !== "warning" &&
+        type !== "critical"
       ) {
         return;
       }
 
-      if (alert.type === "critical") {
+      if (type === "critical") {
         setActiveCriticalAlert(alert);
         if (!isMutedRef.current) {
-          unlockAudio().then(() => {
-            startCriticalAlarm();
-          });
+          startCriticalAlarm();
         }
-      } else if (alert.type === "warning") {
-        const toastId = `toast-${Date.now()}`;
+      } else if (type === "warning") {
+        const toastId = `toast-${key}`;
         const newToast = { id: toastId, alert };
         setWarningToasts((prev) => [...prev, newToast]);
 
         // Auto-dismiss warning toast after 7 seconds
-        window.setTimeout(() => {
+        const timer = window.setTimeout(() => {
+          toastTimersRef.current.delete(timer);
           setWarningToasts((prev) => prev.filter((t) => t.id !== toastId));
         }, 7000);
+        toastTimersRef.current.add(timer);
 
         if (!isMutedRef.current) {
-          unlockAudio().then(() => {
-            playWarningChime();
-          });
+          playWarningChime();
         }
       }
     },
-    [profile?.role]
+    [profile]
   );
+
+  const handleIncomingAlertRef = useRef(handleIncomingAlert);
+  useLayoutEffect(() => {
+    handleIncomingAlertRef.current = handleIncomingAlert;
+  }, [handleIncomingAlert]);
 
   // Subscribe to Supabase Realtime for alerts table
   useEffect(() => {
+    let active = true;
+    const toastTimers = toastTimersRef.current;
     const channel = supabase
       .channel("aquaguard:alerts-realtime")
       .on(
@@ -146,25 +194,40 @@ export function AlertAudioProvider({ children }) {
           table: "alerts",
         },
         (payload) => {
-          handleIncomingAlert(payload.new);
+          if (active) handleIncomingAlertRef.current(payload.new);
         }
       )
       .subscribe((status, err) => {
-        if (err) {
-          console.warn("Supabase Realtime alerts subscription warning:", err);
+        if (!active) return;
+        switch (status) {
+          case "SUBSCRIBED":
+            break;
+          case "CHANNEL_ERROR":
+          case "TIMED_OUT":
+          case "CLOSED":
+            console.warn("Supabase Realtime alerts subscription:", status, err);
+            break;
         }
       });
 
     return () => {
+      active = false;
       stopCriticalAlarm();
-      supabase.removeChannel(channel);
+      toastTimers.forEach((timer) => window.clearTimeout(timer));
+      toastTimers.clear();
+      void supabase.removeChannel(channel).catch((error) => {
+        console.warn("Could not remove alerts channel:", error);
+      });
     };
-  }, [handleIncomingAlert]);
+  }, []);
 
   return (
     <AlertAudioContext.Provider
       value={{
         isMuted,
+        isAudioUnlocked,
+        isAudioBlocked,
+        unlockAlertAudio,
         toggleMute,
         silenceAlarm,
         testSound,

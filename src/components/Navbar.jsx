@@ -56,7 +56,8 @@ export default function Navbar({
   unreadAlerts = 0,
 }) {
   const { profile } = useAuth();
-  const { isMuted, toggleMute } = useAlertAudio();
+  const { isMuted, toggleMute, isAudioBlocked, unlockAlertAudio } =
+    useAlertAudio();
   const [weather, setWeather] = useState(null);
 
   useEffect(() => {
@@ -180,30 +181,52 @@ export default function Navbar({
 
         <button
           type="button"
-          onClick={toggleMute}
-          className={`icon-btn sound-toggle-btn ${isMuted ? "sound-muted" : "sound-active"}`}
+          onClick={isAudioBlocked ? unlockAlertAudio : toggleMute}
+          className={`icon-btn sound-toggle-btn ${
+            isMuted
+              ? "sound-muted"
+              : isAudioBlocked
+                ? "sound-blocked"
+                : "sound-active"
+          }`}
           title={
             isMuted
               ? "Alert sounds are muted. Click to enable sound alerts"
-              : "Alert sounds are active. Click to mute"
+              : isAudioBlocked
+                ? "Browser blocked sound autoplay. Click to enable alert sounds"
+                : "Alert sounds are active. Click to mute"
           }
-          aria-label={isMuted ? "Unmute alert sounds" : "Mute alert sounds"}
+          aria-label={
+            isMuted
+              ? "Unmute alert sounds"
+              : isAudioBlocked
+                ? "Click to enable alert sounds"
+                : "Mute alert sounds"
+          }
           style={{
-            color: isMuted ? "#f87171" : "inherit",
-            gap: "4px",
+            color: isMuted ? "#f87171" : isAudioBlocked ? "#f59e0b" : "inherit",
+            gap: "5px",
             width: "auto",
             padding: "0 10px",
             fontSize: "12px",
             fontWeight: 600,
           }}
         >
-          {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+          {isMuted ? (
+            <VolumeX size={17} />
+          ) : isAudioBlocked ? (
+            <VolumeX size={17} />
+          ) : (
+            <Volume2 size={17} />
+          )}
           <span style={{ display: "inline" }}>
             {isMuted
               ? "MUTED"
-              : profile?.role === "resident"
-                ? "Alerts: ON"
-                : "ON"}
+              : isAudioBlocked
+                ? "Click to enable alert sounds"
+                : profile?.role === "resident"
+                  ? "Alerts: ON"
+                  : "ON"}
           </span>
         </button>
 

@@ -7,7 +7,11 @@ let audioCtx = null;
 let criticalInterval = null;
 let isCriticalPlaying = false;
 
-function getAudioContext() {
+export function isAudioUnlocked() {
+  return audioCtx?.state === "running";
+}
+
+export function getAudioContext() {
   if (typeof window === "undefined") {
     return null;
   }
@@ -143,3 +147,10 @@ export function isAlarmPlaying() {
   return isCriticalPlaying;
 }
 
+/**
+ * Reset audio state for unit test isolation.
+ */
+export function resetAudioContextForTesting() {
+  stopCriticalAlarm();
+  audioCtx = null;
+}
