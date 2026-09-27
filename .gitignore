@@ -50,3 +50,6 @@ AquaGuard-Portable/
 build/
 *.pid
 *.lock
+# Generated portable-runtime inputs and release artifacts
+/portable_runtime_cache/
+/release/
