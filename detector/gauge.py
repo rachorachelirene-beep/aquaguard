@@ -191,25 +191,48 @@ def gauge_centerline_y(gauge_points: GaugePoints, ratio: float) -> int:
     return int(round((left_point[1] + right_point[1]) / 2))
 
 
-def calculate_waterline(water_mask: np.ndarray) -> int | None:
+def calculate_waterline(
+    water_mask: np.ndarray,
+    gauge_points: GaugePoints | None = None,
+) -> int | None:
     height, width = water_mask.shape[:2]
-    row_counts = np.count_nonzero(water_mask, axis=1)
-    search_start = int(height * 0.05)
-    search_end = int(height * 0.95)
-    required_pixels = max(1, int(width * WATERLINE_ROW_COVERAGE))
+
+    if gauge_points is not None:
+        gauge_mask = np.zeros((height, width), dtype=np.uint8)
+        gauge_polygon = np.rint(gauge_points).astype(np.int32)
+        cv2.fillConvexPoly(gauge_mask, gauge_polygon, 1)
+        row_widths = np.count_nonzero(gauge_mask, axis=1)
+        gauge_rows = np.flatnonzero(row_widths)
+        if gauge_rows.size == 0:
+            return None
+        row_counts = np.count_nonzero(
+            np.logical_and(water_mask, gauge_mask), axis=1
+        )
+        search_start = int(gauge_rows[0])
+        search_end = int(gauge_rows[-1]) + 1
+    else:
+        row_counts = np.count_nonzero(water_mask, axis=1)
+        row_widths = np.full(height, width, dtype=np.int32)
+        search_start = int(height * 0.05)
+        search_end = int(height * 0.95)
 
     for row in range(search_start, search_end):
+        required_pixels = max(
+            1, int(row_widths[row] * WATERLINE_ROW_COVERAGE)
+        )
         if row_counts[row] >= required_pixels:
             return row
 
-    fallback_pixels = max(
-        1, int(width * WATERLINE_FALLBACK_ROW_COVERAGE)
-    )
-    fallback_rows = np.flatnonzero(
-        row_counts[search_start:search_end] >= fallback_pixels
-    )
-    if fallback_rows.size > 0:
-        return int(search_start + fallback_rows[0])
+    for row in range(search_start, search_end):
+        fallback_pixels = max(
+            1,
+            int(
+                row_widths[row]
+                * WATERLINE_FALLBACK_ROW_COVERAGE
+            ),
+        )
+        if row_counts[row] >= fallback_pixels:
+            return row
     return None
 
 

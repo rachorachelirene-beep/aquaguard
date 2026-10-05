@@ -1672,7 +1672,7 @@ def run_yolo_detection(
 
             confidence_values.append(confidence)
 
-    detected = bool(
+    has_water_mask = bool(
         confidence_values
         and np.count_nonzero(water_mask) > 0
     )
@@ -1692,10 +1692,12 @@ def run_yolo_detection(
     )
 
     waterline_y = (
-        calculate_waterline(water_mask)
-        if detected
+        calculate_waterline(water_mask, gauge_points)
+        if has_water_mask
         else None
     )
+
+    detected = waterline_y is not None
 
     level_m = waterline_to_level(
         waterline_y,
