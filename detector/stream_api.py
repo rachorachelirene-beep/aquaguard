@@ -26,6 +26,11 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env", override=True)
 
 try:
+    from .opencv_waterline import LevelSmoother, detect_waterline
+except ImportError:
+    from opencv_waterline import LevelSmoother, detect_waterline
+
+try:
     from .gauge import (  # type: ignore[import-not-found]  # noqa: E402
         CRITICAL_LEVEL_M,
         GAUGE_ENABLED,
@@ -364,6 +369,12 @@ latest_detection = {
         "Waiting for a usable monitoring detection."
     ),
     "waterline_y": None,
+    "measurement_source": "none",
+    "opencv_score": None,
+    "opencv_available": False,
+    "opencv_detected": False,
+    "yolo_available": False,
+    "yolo_detected": False,
     "frame_width": None,
     "frame_height": None,
     "objects": [],
@@ -385,6 +396,12 @@ PUBLIC_DETECTION_FIELDS = (
     "flood_risk",
     "weather_risk",
     "waterline_y",
+    "measurement_source",
+    "opencv_score",
+    "opencv_available",
+    "opencv_detected",
+    "yolo_available",
+    "yolo_detected",
     "frame_width",
     "frame_height",
     "detected_at",
@@ -872,16 +889,15 @@ def calculate_detection_combined_risk(
     )
 
     yolo_available = bool(
-        detection.get("detection_enabled")
+        detection.get("yolo_available", detection.get("detection_enabled"))
     )
     flood_detected = (
-        bool(detection.get("detected"))
+        bool(detection.get("yolo_detected", detection.get("detected")))
         if yolo_available
         else None
     )
     water_measurement_valid = bool(
-        yolo_available
-        and detection.get("detected")
+        detection.get("detected")
         and detection.get("waterline_y") is not None
         and detection.get("level_m") is not None
     )
@@ -1341,6 +1357,12 @@ def update_camera_state(
                             "Waiting for a usable monitoring detection."
                         ),
                         "waterline_y": None,
+                        "measurement_source": "none",
+                        "opencv_score": None,
+                        "opencv_available": False,
+                        "opencv_detected": False,
+                        "yolo_available": False,
+                        "yolo_detected": False,
                         "frame_width": None,
                         "frame_height": None,
                         "objects": [],
@@ -1519,7 +1541,7 @@ def determine_level_status(
     return "normal"
 
 
-def run_yolo_detection(
+def _run_yolo_detection(
     frame: np.ndarray,
 ) -> tuple[dict, np.ndarray]:
     frame_height, frame_width = frame.shape[:2]
@@ -1545,6 +1567,8 @@ def run_yolo_detection(
             "station_id": get_active_station_id(),
             "camera_connected": camera_connected,
             "detection_enabled": False,
+            "yolo_available": False,
+            "yolo_detected": False,
             "detected": False,
             "status": "no_detection",
             "level_m": 0.0,
@@ -1739,6 +1763,8 @@ def run_yolo_detection(
         "station_id": get_active_station_id(),
         "camera_connected": camera_connected,
         "detection_enabled": True,
+        "yolo_available": True,
+        "yolo_detected": detected,
         "detected": detected,
         "status": status,
         "level_m": level_m,
@@ -1768,6 +1794,93 @@ def run_yolo_detection(
     )
 
     return result, water_mask
+
+
+def safe_yolo_detection(frame: np.ndarray) -> tuple[dict, np.ndarray]:
+    try:
+        result, mask = _run_yolo_detection(frame)
+    except Exception as error:
+        # Inference errors must not prevent the independent optical measurement.
+        h, w = frame.shape[:2]
+        result = {
+            "station_id": get_active_station_id(),
+            "camera_connected": camera_connected,
+            "detected": False,
+            "level_m": 0.0,
+            "detection_enabled": False,
+            "yolo_available": False,
+            "yolo_detected": False,
+            "water_level": 0.0,
+            "confidence": 0.0,
+            "water_coverage": 0.0,
+            "flood_risk": 0.0,
+            "waterline_y": None,
+            "frame_width": w,
+            "frame_height": h,
+            "objects": [],
+            "error": sanitize_public_error(error),
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+            "latest_frame_at": latest_frame_at,
+        }
+        mask = np.zeros((h, w), dtype=np.uint8)
+    return result, mask
+
+
+def run_yolo_detection(frame: np.ndarray) -> tuple[dict, np.ndarray]:
+    """Primary OpenCV measurement with independent YOLO confirmation/fallback."""
+    result, mask = safe_yolo_detection(frame)
+    return apply_opencv_measurement(frame, result), mask
+
+
+def apply_opencv_measurement(frame: np.ndarray, yolo_result: dict) -> dict:
+    result = dict(yolo_result)
+    h, w = frame.shape[:2]
+    points = resolve_configured_gauge_points(w, h, CAMERA_WIDTH, CAMERA_HEIGHT)
+    optical = detect_waterline(frame, points)
+    yolo_available = bool(
+        yolo_result.get("yolo_available", yolo_result.get("detection_enabled"))
+    )
+    yolo_detected = yolo_available and bool(
+        yolo_result.get("yolo_detected", yolo_result.get("detected"))
+    )
+    result["yolo_available"] = yolo_available
+    result["yolo_detected"] = yolo_detected
+    result["opencv_available"] = points is not None
+    result["opencv_detected"] = optical is not None
+    result["measurement_source"] = "yolo" if yolo_detected else "none"
+    result["opencv_score"] = optical.score if optical else None
+    result["measurement_mode"] = (
+        "calibrated_gauge" if points is not None else "frame_ratio"
+    )
+    result["gauge_enabled"] = points is not None
+    result["gauge_points"] = serialize_gauge_points(points)
+    # Preserve the legacy field's YOLO meaning; overall measurement uses detected.
+    result["detection_enabled"] = yolo_available
+    if optical:
+        level = waterline_to_level(optical.waterline_y, h, points)
+        result.update(
+            detected=True,
+            level_m=level,
+            water_level=level,
+            waterline_y=optical.waterline_y,
+            measurement_source=(
+                "opencv+yolo" if mask_confirmation(result) else "opencv"
+            ),
+        )
+    result["status"] = determine_level_status(
+        result.get("level_m", 0.0), result.get("detected", False)
+    )
+    result["combined_risk"] = calculate_detection_combined_risk(result)
+    return result
+
+
+def mask_confirmation(yolo_result: dict) -> bool:
+    """Coverage and confidence remain strictly derived from YOLO masks."""
+    return bool(
+        yolo_result.get("yolo_detected", yolo_result.get("detected"))
+        and yolo_result.get("confidence", 0)
+        and yolo_result.get("water_coverage", 0)
+    )
 
 
 # =========================================================
@@ -2269,6 +2382,9 @@ def camera_capture_loop() -> None:
             print("Camera connected successfully.")
             update_camera_state(True)
             frame_counter = 0
+            smoother = LevelSmoother()
+            cached_yolo = None
+            smoothing_context = None
 
             while not stop_event.is_set():
                 if camera_reconnect_event.is_set():
@@ -2324,41 +2440,62 @@ def camera_capture_loop() -> None:
                 frame_counter += 1
 
                 should_run_yolo = (
-                    frame_counter
+                    cached_yolo is None
+                    or frame_counter
                     % YOLO_FRAME_INTERVAL
                     == 0
                     or latest_detection.get(
                         "detected_at"
                     )
                     is None
+                    or cached_yolo.get("station_id") != get_active_station_id()
                 )
 
                 if should_run_yolo:
                     detection, water_mask = (
-                        run_yolo_detection(frame)
+                        safe_yolo_detection(frame)
                     )
-
-                    detection["latest_frame_at"] = (
-                        latest_frame_at
-                    )
-
-                    with state_lock:
-                        latest_detection = detection
-                        latest_water_mask = water_mask
-
-                    notify_detection_clients()
+                    cached_yolo = detection
                 else:
                     with state_lock:
-                        detection = dict(
-                            latest_detection
-                        )
-
                         water_mask = (
                             latest_water_mask.copy()
                             if latest_water_mask
                             is not None
                             else None
                         )
+
+                detection = apply_opencv_measurement(frame, cached_yolo)
+                context = (get_active_station_id(), frame.shape, GAUGE_POINTS)
+                if context != smoothing_context:
+                    smoother.reset()
+                    smoothing_context = context
+                stable_level = smoother.update(
+                    detection["level_m"] if detection["detected"] else None
+                )
+                if stable_level is None:
+                    detection.update(
+                        detected=False, level_m=0.0, water_level=0.0,
+                        waterline_y=None, measurement_source="none",
+                    )
+                else:
+                    detection.update(level_m=stable_level, water_level=stable_level)
+                    points = resolve_configured_gauge_points(
+                        frame.shape[1], frame.shape[0], CAMERA_WIDTH, CAMERA_HEIGHT
+                    )
+                    detection["waterline_y"] = level_to_y(
+                        stable_level, frame.shape[0], points
+                    )
+                detection["status"] = determine_level_status(
+                    detection["level_m"], detection["detected"]
+                )
+                detection["combined_risk"] = calculate_detection_combined_risk(detection)
+                detection["latest_frame_at"] = latest_frame_at
+                detection["detected_at"] = latest_frame_at
+                with state_lock:
+                    latest_detection = detection
+                    latest_water_mask = water_mask
+                notify_detection_clients()
 
                 annotated_frame = annotate_frame(
                     frame,
