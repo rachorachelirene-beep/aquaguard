@@ -1,3 +1,6 @@
+import useRealtimeDetection from "../../hooks/useRealtimeDetection";
+import { cameraAgentBaseUrl } from "../../lib/cameraAgent";
+import { currentLiveLevel } from "../../lib/gaugeCalibration";
 import {
   useCallback,
   useEffect,
@@ -705,22 +708,11 @@ export default function Prediction() {
   const latestValidReading = readings.find(
     (reading) => toNumber(reading.level_m, null) != null
   );
-  const readingLevel = toNumber(latestValidReading?.level_m, null);
-  const detectionLevel = toNumber(yolo?.level_m, null);
-  const readingTime = new Date(
-    latestValidReading?.recorded_at ?? 0
-  ).getTime();
-  const detectionTime = new Date(yolo?.detected_at ?? 0).getTime();
-  const usesDetectionLevel =
-    detectionLevel != null &&
-    (readingLevel == null || detectionTime > readingTime);
-  const currentLevel =
-    usesDetectionLevel
-      ? detectionLevel
-      : readingLevel;
-  const currentLevelTimestamp = usesDetectionLevel
-    ? yolo?.detected_at
-    : latestValidReading?.recorded_at;
+  const { detection: liveDetection, transport } = useRealtimeDetection({
+    cameraApiBaseUrl: cameraAgentBaseUrl, stationId: selectedStationId,
+  });
+  const currentLevel = currentLiveLevel(liveDetection, selectedStationId, transport);
+  const currentLevelTimestamp = currentLevel == null ? null : liveDetection?.detected_at;
 
   const rainfall = toNumber(
     weather?.rain_1h ??
@@ -990,7 +982,7 @@ export default function Prediction() {
 
               <strong>
                 {currentLevel == null
-                  ? "--"
+                  ? "UNAVAILABLE"
                   : `${currentLevel.toFixed(2)} m`}
               </strong>
 

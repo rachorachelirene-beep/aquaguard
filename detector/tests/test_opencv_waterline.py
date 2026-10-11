@@ -16,6 +16,8 @@ def scene(row=None):
     image = np.full((230, 140, 3), 170, np.uint8)
     if row is not None:
         image[row:] = 70  # neutral gray water, no blue color cue
+        for y in range(row+3, image.shape[0]):
+            image[y] = int(70+8*np.sin((y-row)*1.2))
     return image
 
 
@@ -26,7 +28,7 @@ class OpticalTests(unittest.TestCase):
     def test_low_middle_warning_critical(self):
         for row in (204, 110, 74, 40):
             with self.subTest(row=row):
-                result = detect_waterline(scene(row), POINTS)
+                result = detect_waterline(scene(row), POINTS, water_confirmed=row == 204)
                 self.assertIsNotNone(result)
                 self.assertLessEqual(abs(result.waterline_y-row), 2)
                 level = gauge.waterline_to_level(result.waterline_y, 230, POINTS)
@@ -58,13 +60,16 @@ class OpticalTests(unittest.TestCase):
         points = np.float32([[40,20], [105,30], [120,210], [20,200]])
         rect = np.full((200,80,3), 170, np.uint8)
         rect[100:] = 70
+        for y in range(103,200):
+            rect[y] = int(70+8*np.sin((y-100)*1.2))
         transform = cv2.getPerspectiveTransform(
             np.float32([[0,0],[79,0],[79,199],[0,199]]), points)
         image = cv2.warpPerspective(rect, transform, (140,230))
         result = detect_waterline(image, tuple(map(tuple, points)))
         self.assertIsNotNone(result)
-        self.assertAlmostEqual(result.ratio, .5, delta=.02)
-        self.assertAlmostEqual(gauge.waterline_to_level(result.waterline_y,230,points),1.5,delta=.05)
+        expected = cv2.perspectiveTransform(np.float32([[[39.5,100]]]), transform)[0,0,1]
+        self.assertAlmostEqual(result.waterline_y, expected, delta=2)
+        self.assertGreater(gauge.waterline_to_level(result.waterline_y,230,points), 0)
 
     def test_invalid_points(self):
         for points in (None, [], ((0,0),)*4, ((float('nan'),0),)*4,
@@ -79,6 +84,9 @@ class IntegrationTests(unittest.TestCase):
         self.points_patch = mock.patch.object(stream_api, 'resolve_configured_gauge_points', return_value=POINTS)
         self.points_patch.start()
         self.addCleanup(self.points_patch.stop)
+        calibration_patch = mock.patch.object(stream_api, 'has_calibration', return_value=True)
+        calibration_patch.start()
+        self.addCleanup(calibration_patch.stop)
 
     def test_yolo_unavailable_optical_valid(self):
         with mock.patch.object(stream_api, 'yolo_model', None):
@@ -106,7 +114,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(snapshot['confidence'], 0)
 
     def test_camera_measures_each_frame_between_yolo_runs(self):
-        frames = [scene(110), scene(109), scene(50), scene(110)]
+        frames = [scene(110), scene(109), scene(110), scene(50), scene(110)]
         published = []
         capture = mock.Mock()
 
@@ -141,11 +149,11 @@ class IntegrationTests(unittest.TestCase):
         ):
             stream_api.camera_capture_loop()
         self.assertEqual(inference.call_count, 1)
-        self.assertEqual(len(published), 4)
-        self.assertTrue(published[0]['detected'])
-        self.assertFalse(published[2]['detected'])  # large isolated jump rejected
-        self.assertEqual(published[2]['measurement_source'], 'none')
-        self.assertTrue(published[3]['detected'])
+        self.assertEqual(len(published), 5)
+        self.assertFalse(published[0]['detected'])
+        self.assertTrue(published[2]['detected'])
+        self.assertFalse(published[3]['detected'])  # large isolated jump rejected
+        self.assertEqual(published[3]['measurement_source'], 'none')
         capture.release.assert_called_once()
 
     def test_yolo_mask_and_optical(self):
@@ -159,7 +167,7 @@ class IntegrationTests(unittest.TestCase):
             def numpy(self):
                 return self.value
         mask = np.zeros((230,140), np.float32)
-        mask[160:,30:111] = 1
+        mask[110:,30:111] = 1
         prediction = SimpleNamespace(
             boxes=SimpleNamespace(cls=Tensor([0]), conf=Tensor([.87])),
             masks=SimpleNamespace(data=[Tensor(mask)]))

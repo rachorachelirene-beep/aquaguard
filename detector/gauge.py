@@ -403,8 +403,11 @@ def draw_measurement_gauge(
         return
 
     current_level = float(detection.get("level_m") or 0)
+    marker_level = waterline_to_level(
+        detection.get("waterline_y"), frame_height, gauge_points
+    ) if detection.get("waterline_y") is not None else current_level
     left_point, right_point = gauge_edge_points_at_ratio(
-        gauge_points, level_to_ratio(current_level)
+        gauge_points, level_to_ratio(marker_level)
     )
     marker_color = level_color(current_level)
     cv2.line(

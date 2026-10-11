@@ -63,6 +63,7 @@ export default function useRealtimeDetection({
     let setupTimeout = null;
     let fallbackTimeout = null;
     let pollingTimeout = null;
+    let measurementExpiryTimeout = null;
     let pollController = null;
     let pollInFlight = false;
     let pollingEnabled = false;
@@ -93,7 +94,7 @@ export default function useRealtimeDetection({
     function acceptDetection(value) {
       if (
         !active ||
-        (value?.station_id != null &&
+        (stationId != null && value?.station_id != null &&
           String(value.station_id) !== String(stationId))
       ) {
         return false;
@@ -103,6 +104,12 @@ export default function useRealtimeDetection({
         key: connectionKey,
         value,
       });
+      window.clearTimeout(measurementExpiryTimeout);
+      const timestamp = Date.parse(value?.detected_at);
+      const remaining = Number.isFinite(timestamp) ? Math.max(0, 30000 - (Date.now() - timestamp)) : 0;
+      measurementExpiryTimeout = window.setTimeout(() => {
+        if (active) setDetectionState({ key: connectionKey, value: null });
+      }, remaining);
       return true;
     }
 
@@ -306,6 +313,7 @@ export default function useRealtimeDetection({
     return () => {
       active = false;
       window.clearTimeout(setupTimeout);
+      window.clearTimeout(measurementExpiryTimeout);
       clearFallbackTimeout();
       stopPolling();
 

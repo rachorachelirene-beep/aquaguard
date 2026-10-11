@@ -1,3 +1,6 @@
+import useRealtimeDetection from "../../hooks/useRealtimeDetection";
+import { cameraAgentBaseUrl } from "../../lib/cameraAgent";
+import { currentLiveLevel } from "../../lib/gaugeCalibration";
 import {
   useCallback,
   useEffect,
@@ -215,6 +218,7 @@ function getWaterStatus(
 
 
 export default function MonitoringStations() {
+  const { detection: liveDetection, transport } = useRealtimeDetection({ cameraApiBaseUrl: cameraAgentBaseUrl });
   const [stations, setStations] =
     useState([]);
 
@@ -497,12 +501,7 @@ export default function MonitoringStations() {
 
     const alertStations =
       stations.filter((station) => {
-        const reading =
-          latestReadings.get(
-            String(station.id)
-          );
-
-        const currentLevel = toNumber(reading?.level_m, null);
+        const currentLevel = currentLiveLevel(liveDetection, station.id, transport);
 
         if (currentLevel == null) {
           return false;
@@ -526,7 +525,8 @@ export default function MonitoringStations() {
     };
   }, [
     stations,
-    latestReadings,
+    liveDetection,
+    transport,
   ]);
 
 
@@ -1189,9 +1189,10 @@ export default function MonitoringStations() {
                       String(station.id)
                     );
 
+                  const liveLevel = currentLiveLevel(liveDetection, station.id, transport);
                   const waterStatus =
                     getWaterStatus(
-                      reading?.level_m,
+                      liveLevel,
                       station.warning_level,
                       station.critical_level
                     );
@@ -1244,11 +1245,7 @@ export default function MonitoringStations() {
                           </span>
 
                           <strong>
-                            {reading
-                              ? formatLevel(
-                                  reading.level_m
-                                )
-                              : "--"}
+                            {liveLevel == null ? "UNAVAILABLE" : formatLevel(liveLevel)}
                           </strong>
                         </div>
 
@@ -1261,6 +1258,7 @@ export default function MonitoringStations() {
                         </span>
                       </div>
 
+                      {reading && <small>Last recorded: {formatLevel(reading.level_m)} at {new Date(reading.recorded_at).toLocaleString()}</small>}
                       <div className="station-thresholds">
                         <div>
                           <span>Normal</span>

@@ -93,6 +93,15 @@ export default function GaugeSettingsCard({
       )}
 
       <div className="camera-form-grid camera-form-grid-three">
+        <p className="camera-field-full">
+          Keep the ruler fixed to a physical reference. Select the four corners
+          in top-left, top-right, bottom-right, bottom-left order, and set the
+          minimum and maximum meters from known reference heights. Apply Calibration
+          updates this form preview; Save Settings persists the reference in the
+          local Camera Agent and activates it immediately. No restart is needed.
+          Sample points alone do not establish meter accuracy.
+          Only the waterline indicator moves automatically.
+        </p>
         <label className="camera-field camera-field-full">
           <span>Gauge points</span>
           <input

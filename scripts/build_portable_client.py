@@ -49,6 +49,7 @@ REQUIRED_DETECTOR_FILES = [
     "weather_service.py",
     "flood_risk.py",
     "gauge.py",
+    "gauge_config.py",
     "opencv_waterline.py",
     "admin_auth.py",
     "requirements.txt",

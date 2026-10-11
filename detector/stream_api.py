@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import threading
@@ -26,9 +27,13 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env", override=True)
 
 try:
-    from .opencv_waterline import LevelSmoother, detect_waterline
+    from . import gauge as gauge_module
+    from .gauge_config import FIELDS as GAUGE_FIELDS, GaugeConfigStore, validate as validate_gauge_config, environment_defaults, load_configuration
+    from .opencv_waterline import LevelSmoother, WaterlineTracker, detect_waterline
 except ImportError:
-    from opencv_waterline import LevelSmoother, detect_waterline
+    import gauge as gauge_module
+    from gauge_config import FIELDS as GAUGE_FIELDS, GaugeConfigStore, validate as validate_gauge_config, environment_defaults, load_configuration
+    from opencv_waterline import LevelSmoother, WaterlineTracker, detect_waterline
 
 try:
     from .gauge import (  # type: ignore[import-not-found]  # noqa: E402
@@ -266,6 +271,43 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
 cv2.setNumThreads(OPENCV_THREADS)
 
 CAMERA_CONFIG_PATH = BASE_DIR / "data" / "camera_config.json"
+calibration_lock = threading.RLock()
+# Serializes mutation requests with activation; calibration_lock is released
+# during network I/O. Always acquire this gate BEFORE calibration_lock.
+measurement_write_lock = threading.RLock()
+calibration_generation = 0
+gauge_config_store = GaugeConfigStore(BASE_DIR / 'data' / 'gauge_config.json')
+calibration_source = 'environment'
+calibration_error = None
+calibration_reference_valid = False
+gauge_configuration = environment_defaults()
+try:
+    gauge_configuration, calibration_source = load_configuration(
+        gauge_config_store, gauge_configuration, CAMERA_WIDTH, CAMERA_HEIGHT
+    )
+    if calibration_source == 'runtime_config':
+        calibration_reference_valid = gauge_configuration['gauge_enabled']
+    else:
+        calibration_reference_valid = bool(
+            gauge_configuration['gauge_enabled'] and os.getenv('GAUGE_POINTS')
+            and os.getenv('MIN_LEVEL_M') is not None and os.getenv('MAX_LEVEL_M') is not None
+        )
+except (ValueError, OSError):
+    calibration_error = 'Saved or startup gauge calibration is invalid. Review and save calibration.'
+    gauge_configuration['gauge_enabled'] = False
+for setting, constant in GAUGE_FIELDS.items():
+    setattr(gauge_module, constant, gauge_configuration[setting])
+    globals()[constant] = gauge_configuration[setting]
+
+
+def calibration_guard(function):
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        with calibration_lock:
+            return function(*args, **kwargs)
+    return guarded
+
+
 camera_config_store = CameraConfigStore(CAMERA_CONFIG_PATH)
 (
     initial_camera_config,
@@ -297,6 +339,7 @@ CORS(
 def prevent_camera_management_caching(response):
     if request.path in {
         "/camera_config",
+        "/gauge_config",
         "/camera_config/test",
         "/camera_devices",
     }:
@@ -375,6 +418,9 @@ latest_detection = {
     "opencv_detected": False,
     "yolo_available": False,
     "yolo_detected": False,
+    "calibration_valid": False,
+    "measurement_validated": False,
+    "proposed_roi": None,
     "frame_width": None,
     "frame_height": None,
     "objects": [],
@@ -402,6 +448,10 @@ PUBLIC_DETECTION_FIELDS = (
     "opencv_detected",
     "yolo_available",
     "yolo_detected",
+    "calibration_valid",
+    "measurement_validated",
+    "calibration_generation",
+    "proposed_roi",
     "frame_width",
     "frame_height",
     "detected_at",
@@ -852,6 +902,7 @@ def get_risk_context(station_id: int) -> dict:
         )
 
 
+@calibration_guard
 def calculate_detection_combined_risk(
     detection: dict,
 ) -> dict:
@@ -1363,6 +1414,9 @@ def update_camera_state(
                         "opencv_detected": False,
                         "yolo_available": False,
                         "yolo_detected": False,
+                        "calibration_valid": False,
+                        "measurement_validated": False,
+                        "proposed_roi": None,
                         "frame_width": None,
                         "frame_height": None,
                         "objects": [],
@@ -1826,22 +1880,58 @@ def safe_yolo_detection(frame: np.ndarray) -> tuple[dict, np.ndarray]:
     return result, mask
 
 
+@calibration_guard
 def run_yolo_detection(frame: np.ndarray) -> tuple[dict, np.ndarray]:
     """Primary OpenCV measurement with independent YOLO confirmation/fallback."""
     result, mask = safe_yolo_detection(frame)
     return apply_opencv_measurement(frame, result), mask
 
 
-def apply_opencv_measurement(frame: np.ndarray, yolo_result: dict) -> dict:
+def has_calibration(points, width, height) -> bool:
+    """Require explicit reference configuration, valid bounds and meter span."""
+    return bool(
+        points is not None
+        and calibration_reference_valid
+        and math.isfinite(MIN_LEVEL_M) and math.isfinite(MAX_LEVEL_M)
+        and MAX_LEVEL_M > MIN_LEVEL_M
+        and all(0 <= x < width and 0 <= y < height for x, y in points)
+    )
+
+
+@calibration_guard
+def apply_opencv_measurement(frame: np.ndarray, yolo_result: dict, tracker=None) -> dict:
     result = dict(yolo_result)
+    result['calibration_generation'] = calibration_generation
     h, w = frame.shape[:2]
     points = resolve_configured_gauge_points(w, h, CAMERA_WIDTH, CAMERA_HEIGHT)
-    optical = detect_waterline(frame, points)
     yolo_available = bool(
         yolo_result.get("yolo_available", yolo_result.get("detection_enabled"))
     )
     yolo_detected = yolo_available and bool(
         yolo_result.get("yolo_detected", yolo_result.get("detected"))
+    )
+    optical = detect_waterline(
+        frame, points, water_confirmed=yolo_detected,
+        analysis_roi=tracker.roi if tracker is not None else None,
+    )
+    roi_conflict = False
+    if tracker is not None and tracker.roi and tracker.verification_due():
+        full = detect_waterline(frame, points, water_confirmed=yolo_detected)
+        roi_conflict = full is None or optical is None or (
+            abs(full.waterline_y-optical.waterline_y) > max(3, h*.02)
+            and full.score >= optical.score*.9
+        )
+        if roi_conflict:
+            tracker.reset()
+            optical = None
+        elif full is not None and abs(full.waterline_y-optical.waterline_y) <= max(3, h*.02):
+            optical = full
+    calibrated = has_calibration(points, w, h)
+    result["calibration_valid"] = calibrated
+    result["proposed_roi"] = None
+    conflict = roi_conflict or bool(
+        optical and yolo_detected and yolo_result.get("waterline_y") is not None
+        and abs(optical.waterline_y-yolo_result["waterline_y"]) > h*.12
     )
     result["yolo_available"] = yolo_available
     result["yolo_detected"] = yolo_detected
@@ -1867,8 +1957,24 @@ def apply_opencv_measurement(frame: np.ndarray, yolo_result: dict) -> dict:
                 "opencv+yolo" if mask_confirmation(result) else "opencv"
             ),
         )
+    if conflict:
+        result.update(detected=False, waterline_y=None, measurement_source="none")
+    accepted = bool(result.get("detected"))
+    if tracker is not None:
+        accepted = tracker.accept(result.get("waterline_y") if accepted else None, h)
+    if optical and accepted and not conflict:
+        result["proposed_roi"] = [list(point) for point in optical.proposed_roi]
+        if tracker is not None:
+            tracker.roi = result["proposed_roi"]
+    result["measurement_validated"] = accepted and calibrated
+    if not accepted or not calibrated:
+        result.update(detected=False, level_m=None, water_level=None,
+                      measurement_source="none")
+        if not accepted:
+            result["waterline_y"] = None
+        result["measurement_mode"] = "uncalibrated" if not calibrated else "calibrated_gauge"
     result["status"] = determine_level_status(
-        result.get("level_m", 0.0), result.get("detected", False)
+        result.get("level_m") or 0.0, result.get("detected", False)
     )
     result["combined_risk"] = calculate_detection_combined_risk(result)
     return result
@@ -1889,6 +1995,7 @@ def mask_confirmation(yolo_result: dict) -> bool:
 
 
 
+@calibration_guard
 def annotate_frame(
     frame: np.ndarray,
     detection: dict,
@@ -1923,7 +2030,7 @@ def annotate_frame(
             0,
         )
 
-    if gauge_points is None:
+    if gauge_points is None and detection.get("calibration_valid"):
         threshold_lines = [
             (
                 CRITICAL_LEVEL_M,
@@ -1970,12 +2077,12 @@ def annotate_frame(
     draw_measurement_gauge(
         output,
         detection,
-        gauge_points,
+        gauge_points if detection.get("calibration_valid") else None,
     )
 
     waterline_y = detection.get("waterline_y")
 
-    if waterline_y is not None:
+    if waterline_y is not None and (detection.get("detected") or detection.get("opencv_detected")):
         cv2.line(
             output,
             (0, int(waterline_y)),
@@ -1983,6 +2090,13 @@ def annotate_frame(
             (255, 220, 40),
             2,
         )
+        label = (
+            f"{detection['level_m']:.2f} m" if detection.get("detected")
+            and detection.get("level_m") is not None
+            else f"{int(waterline_y)} px (uncalibrated)"
+        )
+        cv2.putText(output, label, (max(4, frame_width//2), max(18, int(waterline_y)-8)),
+                    cv2.FONT_HERSHEY_SIMPLEX, .55, (255,220,40), 2, cv2.LINE_AA)
 
     detected = bool(detection.get("detected"))
 
@@ -2007,7 +2121,7 @@ def annotate_frame(
             "Flood",
             "DETECTED" if detected else "NOT DETECTED",
         ),
-        ("Water Level", f"{level_m:.2f} m"),
+        ("Water Level", f"{level_m:.2f} m" if detected else "UNAVAILABLE"),
         ("Coverage", f"{coverage:.1f}%"),
         ("AI Confidence", f"{confidence * 100:.0f}%"),
         ("Flood Risk", f"{risk * 100:.0f}%"),
@@ -2089,12 +2203,34 @@ def annotate_frame(
 # Supabase writing
 # =========================================================
 
+def valid_measurement(detection: dict) -> bool:
+    level = detection.get("level_m")
+    try:
+        return bool(detection.get("detected") and detection.get("calibration_valid")
+                    and detection.get("measurement_validated") and level is not None
+                    and detection.get('calibration_generation') == calibration_generation
+                    and math.isfinite(float(level)))
+    except (TypeError, ValueError):
+        return False
+
+
+def execute_measurement_insert(table, payload, detection):
+    """Activation waits for an in-flight mutation, never for unrelated reads."""
+    with measurement_write_lock:
+        with calibration_lock:
+            if supabase is None or not valid_measurement(detection):
+                return False
+            client = supabase
+        client.table(table).insert(payload).execute()
+        return True
+
+
 def create_alert_if_needed(
     detection: dict,
 ) -> None:
     """Create a Warning/Critical alert with an in-memory cooldown."""
 
-    if supabase is None:
+    if supabase is None or not valid_measurement(detection):
         return
 
     status = str(
@@ -2170,7 +2306,7 @@ def create_alert_if_needed(
             )
 
         try:
-            supabase.table("alerts").insert(
+            inserted = execute_measurement_insert("alerts",
                 {
                     "station_id": station_id,
                     "type": status,
@@ -2179,8 +2315,9 @@ def create_alert_if_needed(
                     "is_read": False,
                     "is_resolved": False,
                     "created_at": detected_at,
-                }
-            ).execute()
+                }, detection)
+            if not inserted:
+                return
 
             last_alert_times[alert_key] = (
                 current_time
@@ -2205,7 +2342,7 @@ def write_detection_to_supabase(
 ) -> None:
     global supabase_error
 
-    if supabase is None:
+    if supabase is None or not valid_measurement(detection):
         return
 
     station_id = int(
@@ -2215,7 +2352,10 @@ def write_detection_to_supabase(
     # This function already runs outside the capture loop. Refreshing cached
     # Supabase context here keeps camera/YOLO processing non-blocking.
     refresh_risk_context(station_id)
-    publish_combined_risk(detection)
+    with calibration_lock:
+        if not valid_measurement(detection):
+            return
+        publish_combined_risk(detection)
 
     level_m = float(
         detection.get("level_m") or 0.0
@@ -2261,16 +2401,16 @@ def write_detection_to_supabase(
     create_alert_if_needed(detection)
 
     try:
-        supabase.table("water_levels").insert(
+        if not execute_measurement_insert("water_levels",
             {
                 "station_id": station_id,
                 "level_m": level_m,
                 "rainfall_mm": 0.0,
                 "recorded_at": detected_at,
-            }
-        ).execute()
+            }, detection):
+            return
 
-        supabase.table("detector_results").insert(
+        if not execute_measurement_insert("detector_results",
             {
                 "station_id": station_id,
                 "level_m": level_m,
@@ -2285,10 +2425,10 @@ def write_detection_to_supabase(
                 "status": database_status,
                 "snapshot_path": None,
                 "detected_at": detected_at,
-            }
-        ).execute()
+            }, detection):
+            return
 
-        supabase.table("yolo_detections").insert(
+        if not execute_measurement_insert("yolo_detections",
             {
                 "station_id": station_id,
                 "water_coverage": water_coverage,
@@ -2309,8 +2449,8 @@ def write_detection_to_supabase(
                 "status": database_status,
                 "snapshot_path": None,
                 "detected_at": detected_at,
-            }
-        ).execute()
+            }, detection):
+            return
 
         supabase_error = None
 
@@ -2383,6 +2523,7 @@ def camera_capture_loop() -> None:
             update_camera_state(True)
             frame_counter = 0
             smoother = LevelSmoother()
+            tracker = WaterlineTracker()
             cached_yolo = None
             smoothing_context = None
 
@@ -2437,71 +2578,74 @@ def camera_capture_loop() -> None:
                     timezone.utc
                 ).isoformat()
 
-                frame_counter += 1
+                with calibration_lock:
+                    frame_counter += 1
 
-                should_run_yolo = (
-                    cached_yolo is None
-                    or frame_counter
-                    % YOLO_FRAME_INTERVAL
-                    == 0
-                    or latest_detection.get(
-                        "detected_at"
-                    )
-                    is None
-                    or cached_yolo.get("station_id") != get_active_station_id()
-                )
-
-                if should_run_yolo:
-                    detection, water_mask = (
-                        safe_yolo_detection(frame)
-                    )
-                    cached_yolo = detection
-                else:
-                    with state_lock:
-                        water_mask = (
-                            latest_water_mask.copy()
-                            if latest_water_mask
-                            is not None
-                            else None
+                    should_run_yolo = (
+                        cached_yolo is None
+                        or cached_yolo.get("calibration_generation") != calibration_generation
+                        or frame_counter
+                        % YOLO_FRAME_INTERVAL
+                        == 0
+                        or latest_detection.get(
+                            "detected_at"
                         )
+                        is None
+                        or cached_yolo.get("station_id") != get_active_station_id()
+                    )
 
-                detection = apply_opencv_measurement(frame, cached_yolo)
-                context = (get_active_station_id(), frame.shape, GAUGE_POINTS)
-                if context != smoothing_context:
-                    smoother.reset()
-                    smoothing_context = context
-                stable_level = smoother.update(
-                    detection["level_m"] if detection["detected"] else None
-                )
-                if stable_level is None:
-                    detection.update(
-                        detected=False, level_m=0.0, water_level=0.0,
-                        waterline_y=None, measurement_source="none",
-                    )
-                else:
-                    detection.update(level_m=stable_level, water_level=stable_level)
-                    points = resolve_configured_gauge_points(
-                        frame.shape[1], frame.shape[0], CAMERA_WIDTH, CAMERA_HEIGHT
-                    )
-                    detection["waterline_y"] = level_to_y(
-                        stable_level, frame.shape[0], points
-                    )
-                detection["status"] = determine_level_status(
-                    detection["level_m"], detection["detected"]
-                )
-                detection["combined_risk"] = calculate_detection_combined_risk(detection)
-                detection["latest_frame_at"] = latest_frame_at
-                detection["detected_at"] = latest_frame_at
-                with state_lock:
-                    latest_detection = detection
-                    latest_water_mask = water_mask
-                notify_detection_clients()
+                    if should_run_yolo:
+                        detection, water_mask = (
+                            safe_yolo_detection(frame)
+                        )
+                        cached_yolo = detection
+                        cached_yolo["calibration_generation"] = calibration_generation
+                    else:
+                        with state_lock:
+                            water_mask = (
+                                latest_water_mask.copy()
+                                if latest_water_mask
+                                is not None
+                                else None
+                            )
 
-                annotated_frame = annotate_frame(
-                    frame,
-                    detection,
-                    water_mask,
-                )
+                    context = (get_active_station_id(), frame.shape, calibration_generation)
+                    if context != smoothing_context:
+                        smoother.reset()
+                        tracker.reset()
+                        smoothing_context = context
+                    detection = apply_opencv_measurement(frame, cached_yolo, tracker)
+                    stable_level = smoother.update(
+                        detection["level_m"] if detection["detected"] else None
+                    )
+                    if stable_level is None:
+                        pixel_y = (
+                            detection.get("waterline_y")
+                            if not detection.get("calibration_valid") else None
+                        )
+                        detection.update(
+                            detected=False, level_m=None, water_level=None,
+                            waterline_y=pixel_y, measurement_source="none",
+                            measurement_validated=False, proposed_roi=None,
+                        )
+                    else:
+                        detection.update(level_m=stable_level, water_level=stable_level)
+                    detection["status"] = determine_level_status(
+                        detection["level_m"] or 0.0, detection["detected"]
+                    )
+                    detection["combined_risk"] = calculate_detection_combined_risk(detection)
+                    detection["latest_frame_at"] = latest_frame_at
+                    detection["detected_at"] = latest_frame_at
+                    with state_lock:
+                        latest_detection = detection
+                        latest_water_mask = water_mask
+                    notify_detection_clients()
+
+                    annotated_frame = annotate_frame(
+                        frame,
+                        detection,
+                        water_mask,
+                    )
 
                 annotated_frame = np.ascontiguousarray(
                     annotated_frame,
@@ -2673,6 +2817,7 @@ def index():
 
 
 @app.get("/health")
+@calibration_guard
 def health():
     requested_station_id = request.args.get(
         "station_id"
@@ -2722,6 +2867,56 @@ def health():
             ),
         }
     )
+
+
+@app.get('/gauge_config')
+@require_admin
+def get_gauge_configuration():
+    with calibration_lock:
+        return jsonify(settings=dict(gauge_configuration), generation=calibration_generation,
+                       configuration_source=calibration_source, error=calibration_error,
+                       calibration_valid=calibration_reference_valid)
+
+
+@app.put('/gauge_config')
+@require_admin
+def update_gauge_configuration():
+    global gauge_configuration, calibration_generation, calibration_source
+    global calibration_error, calibration_reference_valid, latest_water_mask
+    payload = request.get_json(silent=True)
+    try:
+        with measurement_write_lock, calibration_lock:
+            config = validate_gauge_config(payload, CAMERA_WIDTH, CAMERA_HEIGHT)
+            # Persistence must succeed before any running state is changed.
+            gauge_config_store.save(config)
+            gauge_configuration = config
+            for setting, constant in GAUGE_FIELDS.items():
+                setattr(gauge_module, constant, config[setting])
+                globals()[constant] = config[setting]
+            calibration_generation += 1
+            calibration_source = 'runtime_config'
+            calibration_error = None
+            calibration_reference_valid = config['gauge_enabled']
+            with state_lock:
+                latest_water_mask = None
+                latest_detection.update(
+                    detected=False, level_m=None, water_level=None, waterline_y=None,
+                    status='waiting', measurement_source='none', opencv_detected=False,
+                    yolo_detected=False, confidence=None, water_coverage=None,
+                    measurement_validated=False, proposed_roi=None,
+                    calibration_valid=calibration_reference_valid,
+                    calibration_generation=calibration_generation,
+                    combined_risk=not_assessed_flood_risk('Calibration changed; waiting for validated readings.'),
+                )
+            response = dict(settings=dict(config), generation=calibration_generation,
+                            configuration_source=calibration_source,
+                            calibration_valid=calibration_reference_valid)
+        notify_detection_clients()
+        return jsonify(response)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    except OSError:
+        return jsonify(error='Unable to persist gauge calibration. Active calibration was not changed.'), 500
 
 
 @app.get("/camera_config")
