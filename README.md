@@ -103,7 +103,7 @@ For production deployment on barangay monitoring PCs, AquaGuard provides a stand
 
 ### Daily Staff Workflow
 1. Turn on the monitoring PC.
-2. Ensure the configured CCTV/router is powered on OR the USB webcam is plugged in.
+2. Plug in the AquaGuard USB webcam (camera index 0).
 3. Double-click the **AquaGuard** shortcut on the Desktop.
 4. The local Camera Agent initializes and opens `https://aquaguard-live.vercel.app` in the default browser.
 5. Log in with barangay credentials and open **Live Monitoring**.
@@ -113,6 +113,21 @@ For full installation and one-time administrator provisioning instructions, refe
 ---
 
 ## Camera Configuration
+
+The local AquaGuard monitoring camera is a USB webcam at index **0**, with
+1280×720 frames. Copy `detector/.env.example` to `detector/.env` for development:
+`CAMERA_SOURCE=usb`, `CAMERA_INDEX=0`, `CAMERA_WIDTH=1280`, `CAMERA_HEIGHT=720`.
+A saved Admin camera configuration takes precedence; select USB index 0 there
+if a previous RTSP configuration was saved. RTSP remains optional.
+
+Water levels primarily use grayscale OpenCV waterline detection inside the
+calibrated four-point gauge after perspective rectification. YOLO masks provide
+secondary AI confidence and coverage, and retain the gauge-only level fallback.
+Calibrate `GAUGE_POINTS` and meter endpoints for the installed camera. The API
+reports `measurement_source` (`opencv`, `opencv+yolo`, `yolo`, or `none`) and
+`opencv_score` separately from YOLO `confidence`. A three-sample median smooths
+camera readings; large jumps require three consistent observations. Optical
+scores are heuristic evidence, not probabilities that an edge is water.
 
 Camera setup is managed through the web interface under **Admin > Camera Settings**:
 

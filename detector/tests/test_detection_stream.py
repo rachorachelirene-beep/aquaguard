@@ -56,6 +56,8 @@ class DetectionStreamTests(unittest.TestCase):
                 "camera_connected": True,
                 "detection_enabled": True,
                 "detected": True,
+                "calibration_valid": True,
+                "measurement_validated": True,
                 "status": "warning",
                 "level_m": 2.1,
                 "water_level": 2.1,
@@ -107,6 +109,28 @@ class DetectionStreamTests(unittest.TestCase):
             path,
             buffered=False,
         )
+
+    def test_live_and_polling_preserve_explicit_validation_flags_and_zero(self):
+        for connected, detected, calibrated, validated in (
+            (True, True, True, True), (False, False, False, False),
+            (True, False, True, False), (True, False, False, False),
+        ):
+            flags = dict(camera_connected=connected, detected=detected,
+                         calibration_valid=calibrated, measurement_validated=validated)
+            with stream_api.state_lock:
+                stream_api.camera_connected = connected
+                stream_api.latest_detection.update(flags, level_m=0.0 if validated else None)
+            with mock.patch.object(stream_api, 'set_active_station_id'):
+                polling = self.client.get('/latest_detection').get_json()
+            response = self.open_stream()
+            try:
+                live = parse_detection_event(next(response.response))
+            finally:
+                response.close()
+            for payload in (polling, live):
+                for field, expected in flags.items():
+                    self.assertIs(payload[field], expected)
+                self.assertEqual(payload['level_m'], 0.0 if validated else None)
 
     def test_route_exists_and_uses_event_stream_content_type(self):
         routes = {

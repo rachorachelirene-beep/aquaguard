@@ -26,6 +26,8 @@ __pycache__/
 # Backend-only runtime camera configuration (may contain credentials)
 /detector/data/camera_config.json
 /detector/data/.camera_config_*.tmp
+/detector/data/gauge_config.json
+/detector/data/.gauge_config_*.tmp
 /detector/data/camera_agent.lock
 /detector/data/camera_agent.pid
 

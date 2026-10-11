@@ -37,7 +37,7 @@ TEST_DIRECTORY = Path(__file__).resolve().parent
 
 
 @contextmanager
-def test_config_path(name: str):
+def temporary_config_path(name: str):
     path = TEST_DIRECTORY / f".{name}.json"
     path.unlink(missing_ok=True)
 
@@ -90,7 +90,7 @@ class CameraConfigTests(unittest.TestCase):
                     )
 
     def test_saved_config_persists_and_reloads(self):
-        with test_config_path("persistence_test") as path:
+        with temporary_config_path("persistence_test") as path:
             store = CameraConfigStore(path)
 
             saved = store.save(RTSP_CONFIG)
@@ -104,7 +104,7 @@ class CameraConfigTests(unittest.TestCase):
             )
 
     def test_malformed_saved_config_falls_back_to_environment(self):
-        with test_config_path("malformed_test") as path:
+        with temporary_config_path("malformed_test") as path:
             path.write_text("{malformed", encoding="utf-8")
             store = CameraConfigStore(path)
 
@@ -121,7 +121,7 @@ class CameraConfigTests(unittest.TestCase):
             self.assertIsNotNone(warning)
 
     def test_environment_fallback_accepts_legacy_webcam(self):
-        with test_config_path("environment_test") as path:
+        with temporary_config_path("environment_test") as path:
             store = CameraConfigStore(path)
 
             config, origin, warning = resolve_camera_configuration(
@@ -140,7 +140,7 @@ class CameraConfigTests(unittest.TestCase):
             self.assertIsNone(warning)
 
     def test_valid_runtime_config_has_precedence_over_environment(self):
-        with test_config_path("precedence_test") as path:
+        with temporary_config_path("precedence_test") as path:
             store = CameraConfigStore(path)
             store.save(USB_CONFIG)
 

@@ -12,6 +12,7 @@ import {
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import useEscapeKey from "../../hooks/useEscapeKey";
+import useValidatedWaterLevel from "../../hooks/useValidatedWaterLevel";
 import { supabase } from "../../lib/supabase";
 
 function toNumber(value, fallback = 0) {
@@ -435,7 +436,7 @@ function OfficerDashboardContent() {
   const usesDetection =
     detectionLevel != null &&
     (readingLevel == null || detectionTime > readingTime);
-  const currentLevel = usesDetection ? detectionLevel : readingLevel;
+  const currentLevel = useValidatedWaterLevel(primaryStation?.id);
   const currentMeasurementAt =
     currentLevel == null
       ? null
@@ -580,11 +581,11 @@ function OfficerDashboardContent() {
                 <span className="stat-icon blue">~</span>
               </div>
               <div className="stat-value blue">
-                {hasCurrentReading ? formatLevel(currentLevel) : "No data"}
+                {hasCurrentReading ? formatLevel(currentLevel) : "UNAVAILABLE"}
               </div>
               <div className="stat-sub">
                 {stationName} · {stationLocation} ·{" "}
-                {formatFreshness(currentMeasurementAt, 10 * 60 * 1000)}
+                Last recorded: {formatFreshness(currentMeasurementAt, 10 * 60 * 1000)}
               </div>
             </div>
 

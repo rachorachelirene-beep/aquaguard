@@ -1,3 +1,4 @@
+import { currentLiveLevel } from "../../lib/gaugeCalibration";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
@@ -102,10 +103,10 @@ function getWaterStatus(level, warningLevel, criticalLevel) {
   if (level == null) {
     return {
       key: "unknown",
-      label: "No Data",
+      label: "UNAVAILABLE",
       tone: "gray",
       badge: "lm-badge-gray",
-      note: "Waiting for live reading",
+      note: "No validated water-level reading",
     };
   }
 
@@ -617,10 +618,11 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
   const criticalLevel = toNumber(selectedStation?.critical_level, 2.5);
   const warningLevel = toNumber(selectedStation?.warning_level, 2);
   const normalLevel = toNumber(selectedStation?.normal_level, 1);
-  const detectedLevel = toNumber(
-    currentDetection?.level_m,
-    toNumber(yolo?.level_m, toNumber(selectedReading?.level_m))
-  );
+  // A current unavailable reading must not fall back to a historical safe level.
+  const liveReading = liveDetection ?? detector;
+  const detectedLevel = agentState === "online" && detectorHealth?.camera_connected
+    ? currentLiveLevel(liveReading, selectedStationId, detectionTransport)
+    : null;
   const status = getWaterStatus(
     detectedLevel,
     warningLevel,
@@ -853,7 +855,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                         {streamBadgeLabel}
                       </span>
                       <span className="lm-timestamp">
-                        Updated {formatTime(selectedReading?.recorded_at)}
+                        Last recorded {formatTime(selectedReading?.recorded_at)}
                       </span>
                       <span className="lm-cam-badge">
                         {cameraSourceLabel}
@@ -937,7 +939,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
 
                       <div className={`lm-detected-box ${status.tone}`}>
                         <span>{status.label}</span>
-                        <strong>{formatLevel(detectedLevel)}</strong>
+                        <strong>{detectedLevel == null ? "UNAVAILABLE" : formatLevel(detectedLevel)}</strong>
                         <small>{status.note}</small>
                       </div>
 

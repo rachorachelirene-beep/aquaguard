@@ -14,6 +14,7 @@ import {
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import useEscapeKey from "../../hooks/useEscapeKey";
+import useValidatedWaterLevel from "../../hooks/useValidatedWaterLevel";
 import {
   cameraAgentBaseUrl as cameraApiBaseUrl,
   isCameraAgentReachable,
@@ -478,7 +479,7 @@ function AdminDashboardContent() {
 
   const primary = latestReadings[0] ?? null;
   const primaryStation = primary?.station ?? stations[0] ?? null;
-  const currentLevel = toNumber(primary?.level_m, null);
+  const currentLevel = useValidatedWaterLevel(primaryStation?.id);
   const hasCurrentReading = currentLevel != null;
   const criticalLevel = toNumber(
     primaryStation?.critical_level,
@@ -596,7 +597,7 @@ function AdminDashboardContent() {
                 </span>
               </div>
               <div className="stat-value blue">
-                {hasCurrentReading ? formatLevel(currentLevel) : "No data"}
+                {hasCurrentReading ? formatLevel(currentLevel) : "UNAVAILABLE"}
               </div>
               <div className="stat-sub">
                 {stationName} · {formatFreshness(primary?.recorded_at, 10 * 60 * 1000)}

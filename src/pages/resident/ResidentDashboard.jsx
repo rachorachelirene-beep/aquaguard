@@ -4,6 +4,7 @@ import { Bell, CloudRain, ShieldAlert, Waves } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useRealtimeDetection from "../../hooks/useRealtimeDetection";
+import { currentLiveLevel } from "../../lib/gaugeCalibration";
 import {
   cameraAgentBaseUrl as cameraApiBaseUrl,
   isCameraAgentReachable,
@@ -281,11 +282,7 @@ export default function ResidentDashboard() {
     (!realtimeDetection.station_id ||
       String(realtimeDetection.station_id) === selectedStationId);
   const currentDetection = realtimeMatchesStation ? realtimeDetection : null;
-  const currentMeasurement = pickNewestMeasurement(
-    {
-      value: currentDetection?.level_m,
-      recordedAt: currentDetection?.detected_at,
-    },
+  const historicalMeasurement = pickNewestMeasurement(
     {
       value: primaryDetection?.level_m,
       recordedAt: primaryDetection?.detected_at,
@@ -295,13 +292,13 @@ export default function ResidentDashboard() {
       recordedAt: primaryReading?.recorded_at,
     }
   );
-  const currentLevel = currentMeasurement?.value ?? null;
+  const currentLevel = currentLiveLevel(currentDetection, selectedStationId, transport);
   const waterStatus = getWaterStatus(currentLevel, primaryStation);
   const combinedRisk = currentDetection?.combined_risk ?? cachedRisk;
   const riskView = getCombinedRiskView(combinedRisk);
   const latestAlert = alerts[0] ?? null;
   const latestAdvisory = advisories[0] ?? null;
-  const lastUpdated = currentMeasurement?.recordedAt ?? null;
+  const lastUpdated = currentLevel == null ? null : currentDetection?.detected_at;
   const waterAge = getAgeMinutes(lastUpdated);
   const waterIsStale = waterAge != null && waterAge > 10;
   const weatherAge = getAgeMinutes(currentWeather?.recorded_at);
@@ -458,9 +455,10 @@ export default function ResidentDashboard() {
               </div>
               <div>
                 <span className="resident-card-eyebrow">Current Water Level</span>
-                <strong>{formatMeasurement(currentLevel, "m", 2)}</strong>
+                <strong>{currentLevel == null ? "UNAVAILABLE" : formatMeasurement(currentLevel, "m", 2)}</strong>
                 <p>{monitoringMessage}</p>
-                <small>Last updated: {formatDateTime(lastUpdated)}</small>
+                <small>Live updated: {formatDateTime(lastUpdated)}</small>
+                {historicalMeasurement && <p>Last recorded: {formatMeasurement(historicalMeasurement.value, "m", 2)} at {formatDateTime(historicalMeasurement.recordedAt)}</p>}
               </div>
             </article>
 

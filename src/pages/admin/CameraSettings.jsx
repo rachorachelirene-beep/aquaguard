@@ -30,6 +30,7 @@ import { cameraAgentBaseUrl as apiBaseUrl } from "../../lib/cameraAgent";
 import { supabase } from "../../lib/supabase";
 import GaugeSettingsCard from "./GaugeSettingsCard";
 import { hasValidGaugePoints } from "./cameraSettingsUtils";
+import { gaugeKeys, gaugeForm, gaugeEdits, saveGaugeCalibration, validatedLevel } from "../../lib/gaugeCalibration";
 
 import "./CameraSettings.css";
 
@@ -104,6 +105,7 @@ function toBoolean(value, fallback = false) {
 
 
 function toNumber(value, fallback = 0) {
+  if (value == null || value === "") return fallback;
   const number = Number(value);
 
   return Number.isFinite(number)
@@ -285,6 +287,7 @@ export default function CameraSettings() {
 
   const [stations, setStations] =
     useState([]);
+  const [activeGauge, setActiveGauge] = useState(null);
 
   const [
     selectedStationId,
@@ -472,6 +475,16 @@ export default function CameraSettings() {
 
         const stationRows =
           stationsResult.data ?? [];
+
+        // The agent is authoritative; cloud settings never override calibration.
+        try {
+          const active = gaugeForm(await requestAdminCameraApi(apiBaseUrl, "/gauge_config"));
+          Object.assign(loadedSettings, active);
+          setActiveGauge(active);
+        } catch (error) {
+          setActiveGauge(null);
+          setErrorMessage(`Active calibration could not be loaded: ${error.message}`);
+        }
 
         setSettings(
           loadedSettings
@@ -1005,6 +1018,7 @@ export default function CameraSettings() {
       return;
     }
 
+    let calibrationSaved = false;
     try {
       setSaving(true);
       setErrorMessage("");
@@ -1017,9 +1031,18 @@ export default function CameraSettings() {
           settings.default_station_id,
       };
 
+      if (!activeGauge) throw new Error("Load the active Camera Agent calibration before saving.");
+      const active = await saveGaugeCalibration(
+        (path, options) => requestAdminCameraApi(apiBaseUrl, path, options), nextSettings
+      );
+      setActiveGauge(active);
+      calibrationSaved = true;
+      Object.assign(nextSettings, active);
+      setSettings(nextSettings);
+
       const rows = Object.entries(
         nextSettings
-      ).map(([key, value]) => ({
+      ).filter(([key]) => !gaugeKeys.includes(key)).map(([key, value]) => ({
         key,
         value: String(value),
       }));
@@ -1048,7 +1071,7 @@ export default function CameraSettings() {
       );
 
       setErrorMessage(
-        error.message ||
+        (calibrationSaved ? `Calibration is active and saved locally, but other settings failed: ${error.message}` : error.message) ||
           "Unable to save camera settings."
       );
     } finally {
@@ -1706,12 +1729,9 @@ export default function CameraSettings() {
               </span>
 
               <strong>
-                {toNumber(detection?.level_m, null) == null
-                  ? "--"
-                  : `${toNumber(
-                      detection.level_m,
-                      null
-                    ).toFixed(2)} m`}
+                {validatedLevel(detection) == null
+                  ? "UNAVAILABLE"
+                  : `${validatedLevel(detection).toFixed(2)} m`}
               </strong>
             </div>
 
@@ -2471,6 +2491,23 @@ export default function CameraSettings() {
                 selectedStationId
               }
             />
+            <p role="status">
+              {!activeGauge ? "Active calibration unavailable. Reload from the Camera Agent."
+                : gaugeEdits(settings, activeGauge)
+                  ? "Unsaved calibration edits — the camera still uses the active saved reference."
+                  : "Calibration matches the active Camera Agent reference."}
+            </p>
+            <button type="button" className="camera-secondary-button" disabled={saving}
+              onClick={async () => {
+                try {
+                  const active = gaugeForm(await requestAdminCameraApi(apiBaseUrl, "/gauge_config"));
+                  setActiveGauge(active);
+                  setSettings((current) => ({ ...current, ...active }));
+                  setErrorMessage("");
+                } catch (error) { setErrorMessage(error.message); }
+              }}>
+              Reload active calibration (discard calibration edits)
+            </button>
 
             <div className="camera-save-bar">
               <div>

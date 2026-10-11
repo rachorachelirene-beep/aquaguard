@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
+import useValidatedWaterLevel from "../../hooks/useValidatedWaterLevel";
 import { useAuth } from "../../context/AuthContext";
 import {
   cameraAgentBaseUrl as cameraApiBaseUrl,
@@ -256,12 +257,12 @@ export default function ResponderDashboard() {
     stationRows.find(
       (item) => String(item.station.id) === String(latestReading?.station_id)
     ) ?? stationRows[0] ?? null;
-  const currentLevel = numberOrNull(primary?.reading?.level_m);
-  const waterStatus = primary?.reading
-    ? primary.status
+  const currentLevel = useValidatedWaterLevel(primary?.station?.id);
+  const waterStatus = currentLevel != null
+    ? getWaterStatus(currentLevel, primary?.station)
     : {
         key: "unknown",
-        label: "No data",
+        label: "UNAVAILABLE",
         className: "gray",
         badge: "badge-gray",
       };
@@ -319,7 +320,7 @@ export default function ResponderDashboard() {
             <div className="stat-card">
               <div className="stat-label">CURRENT WATER LEVEL</div>
               <div className="stat-value blue">
-                {currentLevel == null ? "No data" : `${currentLevel.toFixed(2)} m`}
+                {currentLevel == null ? "UNAVAILABLE" : `${currentLevel.toFixed(2)} m`}
               </div>
               <div className="stat-sub">
                 {primary?.station?.name ?? "No station reading available"}
