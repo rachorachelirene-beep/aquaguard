@@ -22,6 +22,8 @@ __pycache__/
 **/__pycache__/
 *.py[cod]
 *.pyo
+.pytest_cache/
+**/.pytest_cache/
 
 # Backend-only runtime camera configuration (may contain credentials)
 /detector/data/camera_config.json
