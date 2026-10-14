@@ -27,6 +27,7 @@ import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useEscapeKey from "../../hooks/useEscapeKey";
 import { notifyAlertsUpdated } from "../../lib/alertEvents";
 import { supabase } from "../../lib/supabase";
+import FloodMap from '../../components/FloodMap'; 
 
 import "./Alerts.css";
 
@@ -670,6 +671,10 @@ export default function Alerts() {
               </small>
             </div>
           </article>
+        </section>
+
+        <section className="alerts-map-section" style={{ marginBottom: "20px" }}>
+          <FloodMap height="360px" />
         </section>
 
         <section className="alerts-toolbar">

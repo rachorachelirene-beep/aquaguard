@@ -4,6 +4,23 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    watch: {
+      ignored: [
+        '**/AquaGuard-Portable/**',
+        '**/dist_portable/**',
+        '**/portable_runtime_cache/**',
+        '**/detector/**',
+        '**/release/**',
+        '**/.venv/**',
+      ],
+    },
+  },
+  optimizeDeps: {
+    include: ['leaflet', 'react-leaflet'],
+  },
   build: {
     rollupOptions: {
       output: {
@@ -14,6 +31,9 @@ export default defineConfig({
             }
             if (id.includes('@supabase')) {
               return 'vendor-supabase'
+            }
+            if (id.includes('leaflet')) {
+              return 'vendor-map'
             }
             if (id.includes('lucide-react')) {
               return 'vendor-icons'

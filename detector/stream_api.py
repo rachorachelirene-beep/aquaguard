@@ -138,6 +138,10 @@ except ImportError:
         resolve_camera_configuration,
         validate_camera_config,
     )
+    try:
+        from .snapshot_manager import handle_critical_snapshot
+    except ImportError:
+        from snapshot_manager import handle_critical_snapshot
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -636,6 +640,10 @@ def generate_detection_events(
 # =========================================================
 
 def resolve_model_path() -> Path:
+    onnx_candidate = BASE_DIR / "models" / "flood_best.onnx"
+    if env_bool("YOLO_PREFER_ONNX", True) and onnx_candidate.exists():
+        return onnx_candidate
+
     configured_path = Path(YOLO_MODEL_PATH)
 
     if configured_path.is_absolute():
@@ -664,7 +672,8 @@ def load_yolo_model() -> None:
     try:
         print(f"Loading YOLO model: {model_path}")
 
-        yolo_model = YOLO(str(model_path))
+        task_hint = "segment" if model_path.suffix.lower() == ".onnx" else None
+        yolo_model = YOLO(str(model_path), task=task_hint)
         yolo_error = None
 
         print("YOLO model loaded successfully.")
@@ -2633,6 +2642,21 @@ def camera_capture_loop() -> None:
                     detection["status"] = determine_level_status(
                         detection["level_m"] or 0.0, detection["detected"]
                     )
+                    if (
+                        detection["status"] == "critical"
+                        and detection.get("detected")
+                        and detection.get("level_m") is not None
+                    ):
+                        try:
+                            handle_critical_snapshot(
+                                frame=frame,
+                                water_level=float(detection["level_m"]),
+                                threshold=float(CRITICAL_LEVEL_M),
+                                station_id=get_active_station_id(),
+                                supabase_client=supabase,
+                            )
+                        except Exception as snapshot_err:
+                            print(f"Critical snapshot error: {snapshot_err}")
                     detection["combined_risk"] = calculate_detection_combined_risk(detection)
                     detection["latest_frame_at"] = latest_frame_at
                     detection["detected_at"] = latest_frame_at

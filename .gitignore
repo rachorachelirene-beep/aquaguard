@@ -57,3 +57,5 @@ build/
 # Generated portable-runtime inputs and release artifacts
 /portable_runtime_cache/
 /release/
+snapshots/
+**/snapshots/

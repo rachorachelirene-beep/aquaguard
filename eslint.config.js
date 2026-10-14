@@ -7,6 +7,8 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    'dist_portable',
+    'AquaGuard-Portable',
     'node_modules',
     'detector/.venv',
     'portable_runtime_cache',

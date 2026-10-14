@@ -1,0 +1,214 @@
+/* AquaGuard Interactive Flood Map Styling */
+
+.flood-map-container {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  position: relative;
+  background-color: #0b1120;
+}
+
+/* Base custom pin */
+.flood-pin-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.flood-pin-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+  transition: transform 0.2s ease;
+  z-index: 2;
+}
+
+.flood-pin-wrapper:hover .flood-pin-icon {
+  transform: scale(1.15);
+}
+
+/* Status variants */
+.flood-pin-normal .flood-pin-icon {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #a7f3d0;
+}
+
+.flood-pin-warning .flood-pin-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #fde68a;
+}
+
+.flood-pin-critical .flood-pin-icon {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border-color: #fecaca;
+}
+
+/* Pulsing radar effect for Critical status */
+.flood-pin-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background-color: rgba(239, 68, 68, 0.45);
+  animation: flood-pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  z-index: 1;
+}
+
+.flood-pin-pulse-delayed {
+  animation-delay: 0.9s;
+}
+
+@keyframes flood-pulse-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.9;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* Danger zone animated circle overlay */
+.danger-zone-circle {
+  animation: danger-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes danger-glow {
+  0% {
+    fill-opacity: 0.15;
+    stroke-opacity: 0.6;
+  }
+  100% {
+    fill-opacity: 0.30;
+    stroke-opacity: 0.95;
+  }
+}
+
+/* Modern Dark Theme Leaflet Popup Customization */
+.leaflet-popup-content-wrapper {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(71, 85, 105, 0.8) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-tip {
+  background: #0f172a !important;
+}
+
+.flood-popup-card {
+  padding: 14px 16px;
+  min-width: 230px;
+  font-family: inherit;
+}
+
+.flood-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+  padding-bottom: 6px;
+}
+
+.flood-popup-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.flood-popup-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-normal {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.badge-warning {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+.badge-critical {
+  background-color: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+}
+
+.flood-popup-metrics {
+  font-size: 13px;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.flood-popup-level {
+  font-size: 18px;
+  font-weight: 700;
+  color: #38bdf8;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.flood-popup-snapshot-wrap {
+  margin-top: 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: #020617;
+}
+
+.flood-popup-snapshot-img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+}
+
+.flood-popup-snapshot-label {
+  font-size: 10px;
+  padding: 3px 6px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
