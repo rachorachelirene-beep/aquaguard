@@ -1,0 +1,146 @@
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(185, 28, 28, 0.45);
+  border-bottom: 2px solid #ef4444;
+  animation: slideDownOffline 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideDownOffline {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.offline-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.offline-banner-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+  animation: pulseOfflineIcon 2s infinite;
+}
+
+@keyframes pulseOfflineIcon {
+  0%, 100% {
+    transform: scale(1);
+    background: rgba(255, 255, 255, 0.2);
+  }
+  50% {
+    transform: scale(1.08);
+    background: rgba(255, 255, 255, 0.35);
+  }
+}
+
+.offline-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.offline-banner-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.offline-banner-subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.92;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.offline-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.offline-btn-hotlines {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #ffffff;
+  color: #991b1b;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease-in-out;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.offline-btn-hotlines:hover {
+  background: #fef2f2;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.offline-btn-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.offline-btn-dismiss:hover {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 768px) {
+  .offline-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .offline-banner-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .offline-banner-subtitle {
+    white-space: normal;
+  }
+}
+

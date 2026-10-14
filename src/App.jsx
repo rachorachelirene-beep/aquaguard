@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   BrowserRouter,
   Route,
@@ -9,6 +10,9 @@ import { AlertAudioProvider } from "./context/AlertAudioContext";
 import GuestRoute from "./components/GuestRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRedirect from "./components/RoleRedirect";
+import OfflineBanner from "./components/OfflineBanner";
+import EmergencyDirectory from "./components/EmergencyDirectory";
+import { OPEN_EMERGENCY_EVENT } from "./lib/emergencyEvents";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -52,10 +56,24 @@ import ResidentSafetyTips from "./pages/resident/ResidentSafetyTips";
 import ResidentWeather from "./pages/resident/ResidentWeather";
 
 export default function App() {
+  const [isEmergencyOpen, setIsEmergencyOpen] = useState(false);
+
+  useEffect(() => {
+    function handleOpen() {
+      setIsEmergencyOpen(true);
+    }
+
+    window.addEventListener(OPEN_EMERGENCY_EVENT, handleOpen);
+    return () => {
+      window.removeEventListener(OPEN_EMERGENCY_EVENT, handleOpen);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthProvider>
         <AlertAudioProvider>
+          <OfflineBanner onOpenDirectory={() => setIsEmergencyOpen(true)} />
           <Routes>
           <Route
             path="/"
@@ -453,6 +471,10 @@ export default function App() {
             element={<NotFound />}
           />
         </Routes>
+        <EmergencyDirectory
+          isOpen={isEmergencyOpen}
+          onClose={() => setIsEmergencyOpen(false)}
+        />
         </AlertAudioProvider>
       </AuthProvider>
     </BrowserRouter>

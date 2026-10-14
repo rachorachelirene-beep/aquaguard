@@ -5,6 +5,7 @@ import {
   Cloud,
   CloudRain,
   Menu,
+  PhoneCall,
   Search,
   Settings,
   Sun,
@@ -17,6 +18,7 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { useAlertAudio } from "../context/AlertAudioContext";
+import { openEmergencyDirectory } from "../lib/emergencyEvents";
 import { supabase } from "../lib/supabase";
 
 const roleLabels = {
@@ -178,6 +180,31 @@ export default function Navbar({
             </span>
           </Link>
         )}
+
+        <button
+          type="button"
+          onClick={openEmergencyDirectory}
+          className="icon-btn emergency-nav-btn"
+          title="Emergency Hotlines & Evacuation Directory"
+          aria-label="Open emergency hotlines and evacuation directory"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+            padding: "0 10px",
+            fontSize: "12px",
+            fontWeight: 700,
+            background: "rgba(239, 68, 68, 0.12)",
+            color: "#ef4444",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: "6px",
+            cursor: "pointer",
+            width: "auto",
+          }}
+        >
+          <PhoneCall size={14} />
+          <span>SOS Hotlines</span>
+        </button>
 
         <button
           type="button"
