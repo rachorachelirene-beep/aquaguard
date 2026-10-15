@@ -4,7 +4,6 @@ import {
   BookOpen,
   Building,
   CheckCircle2,
-  HeartPulse,
   Home,
   MapPin,
   Phone,

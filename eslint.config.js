@@ -8,6 +8,8 @@ export default defineConfig([
   globalIgnores([
     'dist',
     'dist_portable',
+    'dev-dist',
+    'dev-dist/**',
     'AquaGuard-Portable',
     'node_modules',
     'detector/.venv',

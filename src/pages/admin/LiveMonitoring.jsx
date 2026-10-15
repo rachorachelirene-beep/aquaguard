@@ -8,6 +8,7 @@ import {
   FileText,
   Gauge,
   History,
+  LayoutGrid,
   Maximize2,
   RefreshCw,
   ShieldAlert,
@@ -15,6 +16,7 @@ import {
   Waves,
 } from "lucide-react";
 
+import CCTVMatrix from "../../components/CCTVMatrix";
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import useRealtimeDetection from "../../hooks/useRealtimeDetection";
 import { cameraAgentBaseUrl as cameraApiBaseUrl } from "../../lib/cameraAgent";
@@ -267,6 +269,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
   });
   const [streamVersion, setStreamVersion] = useState(1);
   const [sendingAlert, setSendingAlert] = useState(false);
+  const [viewMode, setViewMode] = useState("single");
   const [now, setNow] = useState(() => new Date());
 
   const loadMonitoring = useCallback(async () => {
@@ -840,7 +843,47 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                 </section>
               )}
 
-              <section className="lm-grid">
+              <div className="lm-view-mode-bar">
+                <span className="lm-view-mode-label">
+                  <Video size={15} />
+                  Surveillance View Mode
+                </span>
+                <div className="lm-view-mode-tabs">
+                  <button
+                    type="button"
+                    className={`lm-view-tab ${viewMode === "single" ? "active" : ""}`}
+                    onClick={() => setViewMode("single")}
+                  >
+                    <Video size={14} />
+                    Single Focus
+                  </button>
+                  <button
+                    type="button"
+                    className={`lm-view-tab ${viewMode === "matrix" ? "active" : ""}`}
+                    onClick={() => setViewMode("matrix")}
+                  >
+                    <LayoutGrid size={14} />
+                    2x2 CCTV Matrix
+                  </button>
+                </div>
+              </div>
+
+              {viewMode === "matrix" ? (
+                <CCTVMatrix
+                  selectedStation={selectedStation}
+                  stations={stations}
+                  stationReadings={stationReadings}
+                  selectedStationId={selectedStationId}
+                  onSelectStation={(stationId) => {
+                    handleStationSelect(stationId);
+                  }}
+                  onExitMatrix={() => setViewMode("single")}
+                  cameraApiBaseUrl={cameraApiBaseUrl}
+                  streamVersion={streamVersion}
+                  cameraConnected={cameraConnected}
+                />
+              ) : (
+                <section className="lm-grid">
                 <div className="lm-left">
                   <div className="lm-feed-wrap" ref={feedRef}>
                     <div className="lm-feed-topbar">
@@ -1287,6 +1330,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                   </div>
                 </aside>
               </section>
+              )}
             </>
           )}
         </div>

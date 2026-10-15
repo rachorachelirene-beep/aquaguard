@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PhoneCall, WifiOff, X } from "lucide-react";
 
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
@@ -13,14 +13,16 @@ import "./OfflineBanner.css";
  */
 export default function OfflineBanner({ onOpenDirectory }) {
   const { isOnline } = useNetworkStatus();
+  const [prevOnline, setPrevOnline] = useState(isOnline);
   const [isDismissed, setIsDismissed] = useState(false);
 
   // Reset dismissal whenever connection goes from online to offline
-  useEffect(() => {
+  if (prevOnline !== isOnline) {
+    setPrevOnline(isOnline);
     if (!isOnline) {
       setIsDismissed(false);
     }
-  }, [isOnline]);
+  }
 
   if (isOnline || isDismissed) {
     return null;

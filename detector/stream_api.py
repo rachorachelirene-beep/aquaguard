@@ -1322,15 +1322,12 @@ def open_camera(
         try:
             return open_rtsp_camera(config)
         except Exception as error:
-            if (
-                configuration_source != CONFIGURATION_ENVIRONMENT
-                or not CAMERA_FALLBACK_TO_WEBCAM
-            ):
+            if not CAMERA_FALLBACK_TO_WEBCAM:
                 raise
 
             print(
                 "RTSP camera unavailable; "
-                "using the developer webcam fallback. Reason: "
+                "falling back to USB webcam. Reason: "
                 f"{sanitize_public_error(error)}"
             )
 
