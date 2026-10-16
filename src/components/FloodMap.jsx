@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import React from "react";
 import {
   MapContainer,
@@ -60,13 +60,45 @@ function createStationDivIcon(status) {
   });
 }
 
-function MapController({ center }) {
+function MapController({ activeStationId, stations, markerRefs }) {
   const map = useMap();
+
   useEffect(() => {
-    if (center && Array.isArray(center) && center.length === 2 && !isNaN(center[0]) && !isNaN(center[1])) {
-      map.flyTo(center, map.getZoom(), { duration: 1.2 });
+    if (!stations || stations.length === 0) return;
+
+    if (activeStationId && activeStationId !== "all") {
+      const target = stations.find(
+        (s) => String(s.id) === String(activeStationId)
+      );
+      if (target) {
+        map.flyTo([target.latitude, target.longitude], Math.max(map.getZoom(), 15), {
+          duration: 1.0,
+        });
+        const marker = markerRefs.current?.[String(target.id)];
+        if (marker && typeof marker.openPopup === "function") {
+          setTimeout(() => {
+            try {
+              marker.openPopup();
+            } catch {
+              // ignore if unmounted
+            }
+          }, 350);
+        }
+        return;
+      }
     }
-  }, [center, map]);
+
+    // "all" mode: fit all station bounds nicely
+    if (stations.length === 1) {
+      map.flyTo([stations[0].latitude, stations[0].longitude], 14, { duration: 1.0 });
+    } else if (stations.length > 1 && leaflet.latLngBounds) {
+      const bounds = leaflet.latLngBounds(
+        stations.map((s) => [s.latitude, s.longitude])
+      );
+      map.fitBounds(bounds, { padding: [55, 55], maxZoom: 14, animate: true });
+    }
+  }, [activeStationId, stations, map, markerRefs]);
+
   return null;
 }
 
@@ -80,6 +112,14 @@ export function FloodMap({
 }) {
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [internalStationId, setInternalStationId] = useState("all");
+  const markerRefs = useRef({});
+
+  // Sync external selectedStationId prop with internal selection
+  const effectiveStationId =
+    selectedStationId !== undefined && selectedStationId !== null && selectedStationId !== ""
+      ? String(selectedStationId)
+      : internalStationId;
 
   useEffect(() => {
     let isMounted = true;
@@ -97,7 +137,8 @@ export function FloodMap({
           .from("stations")
           .select(
             "id, name, location, latitude, longitude, normal_level, warning_level, critical_level, status"
-          );
+          )
+          .order("id", { ascending: true });
 
         if (stationError) throw stationError;
         if (!stationRows || stationRows.length === 0) {
@@ -167,7 +208,7 @@ export function FloodMap({
             const warningLevel = Number(s.warning_level) || 2.0;
             const criticalLevel = Number(s.critical_level) || 2.5;
 
-            let determinedStatus = s.status ? s.status.toLowerCase() : "normal";
+            let determinedStatus = "normal";
             if (currentLevel >= criticalLevel) {
               determinedStatus = "critical";
             } else if (currentLevel >= warningLevel) {
@@ -251,6 +292,13 @@ export function FloodMap({
           }
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "stations" },
+        () => {
+          loadMapData();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -261,24 +309,61 @@ export function FloodMap({
     };
   }, []);
 
-  const activeCenter = useMemo(() => {
-    if (selectedStationId) {
-      const match = stations.find(
-        (s) => String(s.id) === String(selectedStationId)
-      );
-      if (match) return [match.latitude, match.longitude];
-    }
+  const initialCenter = useMemo(() => {
     if (stations.length > 0) {
       return [stations[0].latitude, stations[0].longitude];
     }
     return center;
-  }, [selectedStationId, stations, center]);
+  }, [stations, center]);
+
+  function handleSelectPill(stationOrAll) {
+    if (stationOrAll === "all") {
+      setInternalStationId("all");
+      onStationSelect?.(null);
+    } else {
+      setInternalStationId(String(stationOrAll.id));
+      onStationSelect?.(stationOrAll);
+    }
+  }
 
   return (
     <div
       className={`flood-map-container ${className}`}
       style={{ height }}
     >
+      {stations.length > 0 && (
+        <div className="flood-map-station-bar" role="tablist" aria-label="Monitoring stations on map">
+          <button
+            type="button"
+            className={`flood-station-pill ${effectiveStationId === "all" ? "active" : ""}`}
+            onClick={() => handleSelectPill("all")}
+          >
+            <span>All Barangays ({stations.length})</span>
+          </button>
+
+          {stations.map((station) => {
+            const stStatus = (station.status || "normal").toLowerCase();
+            const isSelected = String(effectiveStationId) === String(station.id);
+
+            return (
+              <button
+                key={station.id}
+                type="button"
+                className={`flood-station-pill pill-${stStatus} ${isSelected ? "active" : ""}`}
+                onClick={() => handleSelectPill(station)}
+                title={`${station.name} — ${station.location}`}
+              >
+                <span className={`flood-station-dot dot-${stStatus}`} />
+                <span>{station.name.replace(/ Station$/i, "")}</span>
+                <span className="flood-station-pill-level">
+                  {(station.current_level ?? 0).toFixed(2)}m
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {loading && stations.length === 0 && (
         <div style={{
           position: "absolute",
@@ -297,12 +382,16 @@ export function FloodMap({
       )}
 
       <MapContainer
-        center={activeCenter}
+        center={initialCenter}
         zoom={zoom}
         scrollWheelZoom={true}
         style={{ width: "100%", height: "100%" }}
       >
-        <MapController center={activeCenter} />
+        <MapController
+          activeStationId={effectiveStationId}
+          stations={stations}
+          markerRefs={markerRefs}
+        />
 
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -332,10 +421,18 @@ export function FloodMap({
               )}
 
               <Marker
+                ref={(el) => {
+                  if (el) {
+                    markerRefs.current[String(station.id)] = el;
+                  }
+                }}
                 position={[station.latitude, station.longitude]}
                 icon={icon}
                 eventHandlers={{
-                  click: () => onStationSelect?.(station),
+                  click: () => {
+                    setInternalStationId(String(station.id));
+                    onStationSelect?.(station);
+                  },
                 }}
               >
                 <Popup className="custom-flood-popup">
@@ -414,3 +511,4 @@ export function FloodMap({
 }
 
 export default FloodMap;
+

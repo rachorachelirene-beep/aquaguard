@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -8,13 +8,15 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
+// @ts-ignore - Side-effect CSS import
 import "leaflet/dist/leaflet.css";
 
 import { supabase } from "../lib/supabase";
+// @ts-ignore - Side-effect CSS import
 import "./FloodMap.css";
 
 // Ensure Leaflet CJS/ESM interop compatibility across all Vite/Rollup bundlers
-const leaflet = (L && L.divIcon ? L : (L && (L as any).default ? (L as any).default : L)) || L;
+const leaflet: typeof L = ((L as any)?.default ?? L) as typeof L;
 
 export interface StationData {
   id: number | string;
@@ -37,17 +39,13 @@ export interface FloodMapProps {
   height?: string;
   className?: string;
   selectedStationId?: number | string | null;
-  onStationSelect?: (station: StationData) => void;
+  onStationSelect?: (station: StationData | null) => void;
 }
 
 // Default regional center: Davao City
 const DEFAULT_CENTER: [number, number] = [7.0707, 125.6087];
 const DEFAULT_ZOOM = 13;
 
-/**
- * Creates custom SVG DivIcons for Leaflet to avoid broken image asset paths
- * and enable animated CSS pulsing for critical flood alarms.
- */
 function createStationDivIcon(status: string) {
   const normalizedStatus = (status || "normal").toLowerCase();
 
@@ -89,16 +87,52 @@ function createStationDivIcon(status: string) {
   });
 }
 
-/**
- * Controller to re-center map when station is selected or data changes
- */
-function MapController({ center }: { center: [number, number] }) {
+function MapController({
+  activeStationId,
+  stations,
+  markerRefs,
+}: {
+  activeStationId: string;
+  stations: StationData[];
+  markerRefs: React.MutableRefObject<Record<string, any>>;
+}) {
   const map = useMap();
+
   useEffect(() => {
-    if (center && Array.isArray(center) && center.length === 2 && !isNaN(center[0]) && !isNaN(center[1])) {
-      map.flyTo(center, map.getZoom(), { duration: 1.2 });
+    if (!stations || stations.length === 0) return;
+
+    if (activeStationId && activeStationId !== "all") {
+      const target = stations.find(
+        (s) => String(s.id) === String(activeStationId)
+      );
+      if (target) {
+        map.flyTo([target.latitude, target.longitude], Math.max(map.getZoom(), 15), {
+          duration: 1.0,
+        });
+        const marker = markerRefs.current?.[String(target.id)];
+        if (marker && typeof marker.openPopup === "function") {
+          setTimeout(() => {
+            try {
+              marker.openPopup();
+            } catch {
+              // ignore if unmounted
+            }
+          }, 350);
+        }
+        return;
+      }
     }
-  }, [center, map]);
+
+    if (stations.length === 1) {
+      map.flyTo([stations[0].latitude, stations[0].longitude], 14, { duration: 1.0 });
+    } else if (stations.length > 1 && leaflet.latLngBounds) {
+      const bounds = leaflet.latLngBounds(
+        stations.map((s) => [s.latitude, s.longitude])
+      );
+      map.fitBounds(bounds, { padding: [55, 55], maxZoom: 14, animate: true });
+    }
+  }, [activeStationId, stations, map, markerRefs]);
+
   return null;
 }
 
@@ -112,8 +146,14 @@ export const FloodMap: React.FC<FloodMapProps> = ({
 }) => {
   const [stations, setStations] = useState<StationData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [internalStationId, setInternalStationId] = useState<string>("all");
+  const markerRefs = useRef<Record<string, any>>({});
 
-  // Fetch initial stations, latest water levels, and snapshot images
+  const effectiveStationId =
+    selectedStationId !== undefined && selectedStationId !== null && selectedStationId !== ""
+      ? String(selectedStationId)
+      : internalStationId;
+
   useEffect(() => {
     let isMounted = true;
 
@@ -126,12 +166,12 @@ export const FloodMap: React.FC<FloodMapProps> = ({
           return;
         }
 
-        // 1. Fetch stations with coordinates
         const { data: stationRows, error: stationError } = await supabase
           .from("stations")
           .select(
             "id, name, location, latitude, longitude, normal_level, warning_level, critical_level, status"
-          );
+          )
+          .order("id", { ascending: true });
 
         if (stationError) throw stationError;
         if (!stationRows || stationRows.length === 0) {
@@ -142,7 +182,6 @@ export const FloodMap: React.FC<FloodMapProps> = ({
           return;
         }
 
-        // 2. Fetch latest water level reading per station
         const stationIds = stationRows.map((s) => s.id);
         const { data: levelRows } = await supabase
           .from("water_levels")
@@ -167,7 +206,6 @@ export const FloodMap: React.FC<FloodMapProps> = ({
           });
         }
 
-        // 3. Fetch latest snapshot per station from alert_events
         const latestSnapshotsByStation: Record<number | string, string> = {};
         try {
           const { data: snapshotRows } = await supabase
@@ -191,7 +229,6 @@ export const FloodMap: React.FC<FloodMapProps> = ({
           // If alert_events table is empty or pending, continue gracefully
         }
 
-        // Combine into StationData objects
         const mappedStations: StationData[] = stationRows
           .filter(
             (s) =>
@@ -208,8 +245,7 @@ export const FloodMap: React.FC<FloodMapProps> = ({
             const warningLevel = Number(s.warning_level) || 2.0;
             const criticalLevel = Number(s.critical_level) || 2.5;
 
-            // Determine status from reading or station status
-            let determinedStatus = s.status ? s.status.toLowerCase() : "normal";
+            let determinedStatus = "normal";
             if (currentLevel >= criticalLevel) {
               determinedStatus = "critical";
             } else if (currentLevel >= warningLevel) {
@@ -244,7 +280,6 @@ export const FloodMap: React.FC<FloodMapProps> = ({
 
     loadMapData();
 
-    // 4. Real-time subscription to water_levels & alert_events
     if (!supabase) return;
 
     const channel = supabase
@@ -294,6 +329,13 @@ export const FloodMap: React.FC<FloodMapProps> = ({
           }
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "stations" },
+        () => {
+          loadMapData();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -304,25 +346,61 @@ export const FloodMap: React.FC<FloodMapProps> = ({
     };
   }, []);
 
-  // Compute map center dynamically from selectedStationId or first valid station
-  const activeCenter = useMemo<[number, number]>(() => {
-    if (selectedStationId) {
-      const match = stations.find(
-        (s) => String(s.id) === String(selectedStationId)
-      );
-      if (match) return [match.latitude, match.longitude];
-    }
+  const initialCenter = useMemo<[number, number]>(() => {
     if (stations.length > 0) {
       return [stations[0].latitude, stations[0].longitude];
     }
     return center;
-  }, [selectedStationId, stations, center]);
+  }, [stations, center]);
+
+  function handleSelectPill(stationOrAll: StationData | "all") {
+    if (stationOrAll === "all") {
+      setInternalStationId("all");
+      onStationSelect?.(null);
+    } else {
+      setInternalStationId(String(stationOrAll.id));
+      onStationSelect?.(stationOrAll);
+    }
+  }
 
   return (
     <div
       className={`flood-map-container ${className}`}
       style={{ height }}
     >
+      {stations.length > 0 && (
+        <div className="flood-map-station-bar" role="tablist" aria-label="Monitoring stations on map">
+          <button
+            type="button"
+            className={`flood-station-pill ${effectiveStationId === "all" ? "active" : ""}`}
+            onClick={() => handleSelectPill("all")}
+          >
+            <span>All Barangays ({stations.length})</span>
+          </button>
+
+          {stations.map((station) => {
+            const stStatus = (station.status || "normal").toLowerCase();
+            const isSelected = String(effectiveStationId) === String(station.id);
+
+            return (
+              <button
+                key={station.id}
+                type="button"
+                className={`flood-station-pill pill-${stStatus} ${isSelected ? "active" : ""}`}
+                onClick={() => handleSelectPill(station)}
+                title={`${station.name} — ${station.location}`}
+              >
+                <span className={`flood-station-dot dot-${stStatus}`} />
+                <span>{station.name.replace(/ Station$/i, "")}</span>
+                <span className="flood-station-pill-level">
+                  {(station.current_level ?? 0).toFixed(2)}m
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {loading && stations.length === 0 && (
         <div style={{
           position: "absolute",
@@ -341,14 +419,17 @@ export const FloodMap: React.FC<FloodMapProps> = ({
       )}
 
       <MapContainer
-        center={activeCenter}
+        center={initialCenter}
         zoom={zoom}
         scrollWheelZoom={true}
         style={{ width: "100%", height: "100%" }}
       >
-        <MapController center={activeCenter} />
+        <MapController
+          activeStationId={effectiveStationId}
+          stations={stations}
+          markerRefs={markerRefs}
+        />
 
-        {/* High-contrast dark tile map */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -361,7 +442,6 @@ export const FloodMap: React.FC<FloodMapProps> = ({
 
           return (
             <React.Fragment key={station.id}>
-              {/* 300m animated red danger zone circle for critical stations */}
               {isCritical && (
                 <Circle
                   center={[station.latitude, station.longitude]}
@@ -377,12 +457,19 @@ export const FloodMap: React.FC<FloodMapProps> = ({
                 />
               )}
 
-              {/* Station Pin Marker */}
               <Marker
+                ref={(el) => {
+                  if (el) {
+                    markerRefs.current[String(station.id)] = el;
+                  }
+                }}
                 position={[station.latitude, station.longitude]}
                 icon={icon}
                 eventHandlers={{
-                  click: () => onStationSelect?.(station),
+                  click: () => {
+                    setInternalStationId(String(station.id));
+                    onStationSelect?.(station);
+                  },
                 }}
               >
                 <Popup className="custom-flood-popup">
@@ -425,7 +512,6 @@ export const FloodMap: React.FC<FloodMapProps> = ({
                       </div>
                     </div>
 
-                    {/* Latest critical/warning snapshot thumbnail */}
                     {(station.status === "warning" || station.status === "critical") && (
                       <div className="flood-popup-snapshot-wrap">
                         {station.latest_snapshot_url ? (
@@ -462,3 +548,4 @@ export const FloodMap: React.FC<FloodMapProps> = ({
 };
 
 export default FloodMap;
+

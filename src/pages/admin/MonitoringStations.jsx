@@ -1507,6 +1507,63 @@ export default function MonitoringStations() {
                     />
                   </label>
 
+                  <label className="stations-form-field stations-form-full">
+                    <span>
+                      Quick fill Davao barangay coordinates (optional)
+                    </span>
+
+                    <select
+                      defaultValue=""
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        if (!val) return;
+                        const [lat, lng, locName] = val.split("|");
+                        updateForm("latitude", lat);
+                        updateForm("longitude", lng);
+                        if (!form.location.trim() && locName) {
+                          updateForm("location", locName);
+                        }
+                      }}
+                    >
+                      <option value="">
+                        -- Select a barangay preset or type manually below --
+                      </option>
+                      <option value="7.0600|125.6200|Brgy. Bucana, Davao City">
+                        Brgy. Bucana (7.0600, 125.6200)
+                      </option>
+                      <option value="7.0548|125.6142|Coastal Seawall, Brgy. Bucana, Davao City">
+                        Brgy. Bucana - Coastal Outflow (7.0548, 125.6142)
+                      </option>
+                      <option value="7.0583|125.5700|Brgy. Matina Crossing, Davao City">
+                        Brgy. Matina Crossing (7.0583, 125.5700)
+                      </option>
+                      <option value="7.0725|125.5582|Brgy. Matina Pangi, Davao City">
+                        Brgy. Matina Pangi (7.0725, 125.5582)
+                      </option>
+                      <option value="7.0472|125.5681|Brgy. Matina Aplaya, Davao City">
+                        Brgy. Matina Aplaya (7.0472, 125.5681)
+                      </option>
+                      <option value="7.0864|125.5847|Brgy. Maa, Davao City">
+                        Brgy. Maa (7.0864, 125.5847)
+                      </option>
+                      <option value="7.1215|125.5956|Brgy. Tigatto, Davao City">
+                        Brgy. Tigatto (7.1215, 125.5956)
+                      </option>
+                      <option value="7.1128|125.6125|Brgy. Buhangin, Davao City">
+                        Brgy. Buhangin (7.1128, 125.6125)
+                      </option>
+                      <option value="7.0989|125.6258|Brgy. Sasa, Davao City">
+                        Brgy. Sasa (7.0989, 125.6258)
+                      </option>
+                      <option value="7.0531|125.5419|Brgy. Talomo Proper, Davao City">
+                        Brgy. Talomo Proper (7.0531, 125.5419)
+                      </option>
+                      <option value="7.2236|125.6428|Brgy. Lasang, Davao City">
+                        Brgy. Lasang (7.2236, 125.6428)
+                      </option>
+                    </select>
+                  </label>
+
                   <label className="stations-form-field">
                     <span>
                       Latitude (optional)
@@ -1550,8 +1607,8 @@ export default function MonitoringStations() {
                   </label>
 
                   <p className="stations-form-help stations-form-full">
-                    Coordinates enable automatic weather updates. Enter both
-                    values, or leave both blank until the station is configured.
+                    Coordinates enable automatic map pins and weather updates. Enter both
+                    values, or pick a preset barangay above.
                   </p>
                 </div>
 

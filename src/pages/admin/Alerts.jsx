@@ -14,6 +14,7 @@ import {
   Eye,
   EyeOff,
   Info,
+  MapPin,
   RefreshCw,
   RotateCcw,
   Search,
@@ -674,7 +675,13 @@ export default function Alerts() {
         </section>
 
         <section className="alerts-map-section" style={{ marginBottom: "20px" }}>
-          <FloodMap height="360px" />
+          <FloodMap
+            height="380px"
+            selectedStationId={stationFilter}
+            onStationSelect={(station) =>
+              setStationFilter(station ? String(station.id) : "all")
+            }
+          />
         </section>
 
         <section className="alerts-toolbar">
@@ -980,6 +987,20 @@ export default function Alerts() {
                       </div>
 
                       <div className="alerts-item-actions">
+                        {alert.station_id && (
+                          <button
+                            type="button"
+                            className="alerts-icon-button"
+                            onClick={() => {
+                              setStationFilter(String(alert.station_id));
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                            }}
+                            title="Focus station on map"
+                          >
+                            <MapPin size={17} />
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           className="alerts-icon-button"
