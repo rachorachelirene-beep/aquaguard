@@ -117,7 +117,7 @@ export function AuthProvider({ children }) {
       return undefined;
     }
 
-    let initialBootDone = false;
+    let currentUserId = null;
 
     async function loadSession() {
       setLoading(true);
@@ -140,6 +140,7 @@ export function AuthProvider({ children }) {
 
         const nextSession = data.session ?? null;
         const nextUser = nextSession?.user ?? null;
+        currentUserId = nextUser?.id ?? null;
 
         setSession(nextSession);
         setUser(nextUser);
@@ -156,21 +157,33 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       if (!isMounted) {
         return;
       }
 
       const nextUser = nextSession?.user ?? null;
+      const nextUserId = nextUser?.id ?? null;
       setSession(nextSession);
       setUser(nextUser);
 
-      // Only re-trigger loadProfile if boot has finished and user changed
+      // If user signed out, clear immediately
+      if (event === "SIGNED_OUT" || (!nextUserId && currentUserId)) {
+        currentUserId = null;
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      // If token simply refreshed or same user returned to tab, do NOT flash full-page loading
       if (initialBootDone) {
-        setLoading(true);
-        await loadProfile(nextUser);
-        if (isMounted) {
-          setLoading(false);
+        if (currentUserId !== nextUserId) {
+          currentUserId = nextUserId;
+          setLoading(true);
+          await loadProfile(nextUser);
+          if (isMounted) {
+            setLoading(false);
+          }
         }
       }
     });
