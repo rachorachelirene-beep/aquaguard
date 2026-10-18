@@ -220,10 +220,18 @@
   right: 12px;
   z-index: 900;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   align-items: center;
   gap: 8px;
+  padding-bottom: 4px;
   pointer-events: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.flood-map-station-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .flood-station-pill {
@@ -242,6 +250,8 @@
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   transition: all 0.18s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .flood-station-pill:hover {
@@ -306,5 +316,28 @@
   background: rgba(2, 6, 23, 0.55);
   color: #cbd5e1;
 }
+
+@media (max-width: 640px) {
+  .flood-map-station-bar {
+    left: 48px;
+    top: 8px;
+    right: 8px;
+  }
+
+  .flood-station-pill {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .flood-popup-card {
+    min-width: 200px;
+    padding: 10px 12px;
+  }
+
+  .flood-popup-title {
+    font-size: 13px;
+  }
+}
+
 
 
