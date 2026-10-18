@@ -150,6 +150,31 @@ export function FloodMap({
         }
 
         const stationIds = stationRows.map((s) => s.id);
+
+        // Fetch unresolved active alerts to determine if alert is still ongoing
+        const activeAlertsByStation = {};
+        try {
+          const { data: alertRows } = await supabase
+            .from("alerts")
+            .select("station_id, type, is_resolved")
+            .in("station_id", stationIds)
+            .eq("is_resolved", false);
+
+          if (alertRows) {
+            alertRows.forEach((a) => {
+              const currentMax = activeAlertsByStation[a.station_id];
+              const normalizedType = String(a.type || "").toLowerCase();
+              if (normalizedType === "critical") {
+                activeAlertsByStation[a.station_id] = "critical";
+              } else if (normalizedType === "warning" && currentMax !== "critical") {
+                activeAlertsByStation[a.station_id] = "warning";
+              }
+            });
+          }
+        } catch {
+          // Graceful fallback if alerts query encounters issue
+        }
+
         const { data: levelRows } = await supabase
           .from("water_levels")
           .select("station_id, level_m, recorded_at")
@@ -208,8 +233,19 @@ export function FloodMap({
             const warningLevel = Number(s.warning_level) || 2.0;
             const criticalLevel = Number(s.critical_level) || 2.5;
 
+            // Determine status: check active unresolved alerts first, or current level threshold
             let determinedStatus = "normal";
-            if (currentLevel >= criticalLevel) {
+            const stationActiveAlert = activeAlertsByStation[s.id];
+
+            if (stationActiveAlert === "critical") {
+              determinedStatus = "critical";
+            } else if (stationActiveAlert === "warning") {
+              determinedStatus = "warning";
+            } else if (!stationActiveAlert) {
+              // If there are NO active unresolved alerts, station is marked normal (resolved)
+              // unless a brand-new reading just crossed the threshold
+              determinedStatus = "normal";
+            } else if (currentLevel >= criticalLevel) {
               determinedStatus = "critical";
             } else if (currentLevel >= warningLevel) {
               determinedStatus = "warning";
@@ -295,6 +331,13 @@ export function FloodMap({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "stations" },
+        () => {
+          loadMapData();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "alerts" },
         () => {
           loadMapData();
         }
