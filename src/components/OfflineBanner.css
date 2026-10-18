@@ -129,18 +129,50 @@
 @media (max-width: 768px) {
   .offline-banner {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: 10px;
     padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
   }
 
-  .offline-banner-actions {
-    width: 100%;
-    justify-content: space-between;
+  .offline-banner-content {
+    gap: 10px;
+  }
+
+  .offline-banner-icon-badge {
+    width: 28px;
+    height: 28px;
+  }
+
+  .offline-banner-title {
+    font-size: 0.8rem;
   }
 
   .offline-banner-subtitle {
     white-space: normal;
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+
+  .offline-banner-actions {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .offline-btn-hotlines {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    min-height: 38px;
+  }
+
+  .offline-btn-dismiss {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
   }
 }
 
