@@ -118,6 +118,7 @@ export function AuthProvider({ children }) {
     }
 
     let currentUserId = null;
+    let initialBootDone = false;
 
     async function loadSession() {
       setLoading(true);
@@ -145,6 +146,8 @@ export function AuthProvider({ children }) {
         setSession(nextSession);
         setUser(nextUser);
         await loadProfile(nextUser);
+      } catch (err) {
+        console.error("Unexpected session load failure:", err);
       } finally {
         initialBootDone = true;
         if (isMounted) {
