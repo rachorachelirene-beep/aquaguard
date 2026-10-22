@@ -30,10 +30,14 @@ try:
     from . import gauge as gauge_module
     from .gauge_config import FIELDS as GAUGE_FIELDS, GaugeConfigStore, validate as validate_gauge_config, environment_defaults, load_configuration
     from .opencv_waterline import LevelSmoother, WaterlineTracker, detect_waterline
+    from .water_roi import clip_water_mask_to_roi
+    from .roi_config import RoiConfigStore, validate_roi_config
 except ImportError:
     import gauge as gauge_module
     from gauge_config import FIELDS as GAUGE_FIELDS, GaugeConfigStore, validate as validate_gauge_config, environment_defaults, load_configuration
     from opencv_waterline import LevelSmoother, WaterlineTracker, detect_waterline
+    from water_roi import clip_water_mask_to_roi
+    from roi_config import RoiConfigStore, validate_roi_config
 
 try:
     from .gauge import (  # type: ignore[import-not-found]  # noqa: E402
@@ -281,6 +285,26 @@ calibration_lock = threading.RLock()
 measurement_write_lock = threading.RLock()
 calibration_generation = 0
 gauge_config_store = GaugeConfigStore(BASE_DIR / 'data' / 'gauge_config.json')
+roi_config_store = RoiConfigStore(BASE_DIR / 'data' / 'roi_config.json')
+roi_configuration = roi_config_store.load()
+if not isinstance(roi_configuration, dict) or 'stations' not in roi_configuration:
+    roi_configuration = {
+        'roi_enabled': True,
+        'stations': roi_configuration.get('stations', {}) if isinstance(roi_configuration, dict) else {},
+    }
+
+
+def get_effective_roi(station_id=None) -> str:
+    active_st = str(station_id if station_id is not None else get_active_station_id()).strip()
+    with calibration_lock:
+        if roi_configuration.get('roi_enabled', True):
+            stations = roi_configuration.get('stations', {})
+            if active_st in stations and stations[active_st].strip():
+                return stations[active_st].strip()
+            if 'default' in stations and stations['default'].strip():
+                return stations['default'].strip()
+    return os.getenv(f'WATER_ROI_POINTS_{active_st}', os.getenv('WATER_ROI_POINTS', '')).strip()
+
 calibration_source = 'environment'
 calibration_error = None
 calibration_reference_valid = False
@@ -344,6 +368,7 @@ def prevent_camera_management_caching(response):
     if request.path in {
         "/camera_config",
         "/gauge_config",
+        "/roi_config",
         "/camera_config/test",
         "/camera_devices",
     }:
@@ -1756,6 +1781,13 @@ def _run_yolo_detection(
 
             confidence_values.append(confidence)
 
+    # Optional station-specific region of interest; no ROI means old behavior.
+    # An invalid ROI raises and safely disables YOLO for this inference,
+    # rather than silently accepting predictions from the whole frame.
+    station_roi = get_effective_roi()
+    if station_roi:
+        water_mask = clip_water_mask_to_roi(water_mask, station_roi)
+
     has_water_mask = bool(
         confidence_values
         and np.count_nonzero(water_mask) > 0
@@ -1791,7 +1823,7 @@ def _run_yolo_detection(
 
     confidence = (
         max(confidence_values)
-        if confidence_values
+        if confidence_values and has_water_mask
         else 0.0
     )
 
@@ -2935,6 +2967,53 @@ def update_gauge_configuration():
         notify_detection_clients()
         return jsonify(response)
     except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+
+@app.get('/roi_config')
+@require_admin
+def get_roi_configuration():
+    station_param = request.args.get('station_id')
+    with calibration_lock:
+        active_id = str(station_param if station_param else get_active_station_id()).strip()
+        effective_points = get_effective_roi(active_id)
+        return jsonify(
+            roi_enabled=bool(roi_configuration.get('roi_enabled', True)),
+            stations=roi_configuration.get('stations', {}),
+            active_station_id=active_id,
+            active_roi_points=effective_points,
+        )
+
+
+@app.put('/roi_config')
+@require_admin
+def update_roi_configuration():
+    global roi_configuration
+    payload = request.get_json(silent=True) or {}
+    try:
+        validated = validate_roi_config(payload)
+        with measurement_write_lock, calibration_lock:
+            if 'stations' in validated:
+                roi_configuration['stations'] = validated['stations']
+                if 'roi_enabled' in validated:
+                    roi_configuration['roi_enabled'] = validated['roi_enabled']
+            elif 'station_id' in validated:
+                st_id = validated['station_id']
+                if 'stations' not in roi_configuration:
+                    roi_configuration['stations'] = {}
+                roi_configuration['stations'][st_id] = validated['roi_points']
+                if 'roi_enabled' in validated:
+                    roi_configuration['roi_enabled'] = validated['roi_enabled']
+            roi_config_store.save(roi_configuration)
+            active_id = str(get_active_station_id())
+            return jsonify(
+                success=True,
+                roi_enabled=bool(roi_configuration.get('roi_enabled', True)),
+                stations=roi_configuration.get('stations', {}),
+                active_station_id=active_id,
+                active_roi_points=get_effective_roi(active_id),
+            )
+    except Exception as error:
         return jsonify(error=str(error)), 400
     except OSError:
         return jsonify(error='Unable to persist gauge calibration. Active calibration was not changed.'), 500

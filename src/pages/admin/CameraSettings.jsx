@@ -29,6 +29,7 @@ import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { cameraAgentBaseUrl as apiBaseUrl } from "../../lib/cameraAgent";
 import { supabase } from "../../lib/supabase";
 import GaugeSettingsCard from "./GaugeSettingsCard";
+import WaterRoiSettingsCard from "./WaterRoiSettingsCard";
 import { hasValidGaugePoints } from "./cameraSettingsUtils";
 import { gaugeKeys, gaugeForm, gaugeEdits, saveGaugeCalibration, validatedLevel } from "../../lib/gaugeCalibration";
 
@@ -2490,6 +2491,11 @@ export default function CameraSettings() {
               selectedStationId={
                 selectedStationId
               }
+            />
+            <WaterRoiSettingsCard
+              apiBaseUrl={apiBaseUrl}
+              selectedStationId={selectedStationId}
+              requestAdminCameraApi={requestAdminCameraApi}
             />
             <p role="status">
               {!activeGauge ? "Active calibration unavailable. Reload from the Camera Agent."
