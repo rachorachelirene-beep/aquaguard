@@ -106,16 +106,29 @@ export function AdminDashboardContent() {
       setStations(stationData);
       setAlerts(alertsRes.data ?? []);
 
-      const activeId = selectedStationId || stationData[0]?.id;
+      let activeId = selectedStationId;
+      if (!activeId && stationData.length > 0) {
+        // Query the station with the most recent water level reading to auto-select
+        const { data: latestRow } = await supabase
+          .from("water_levels")
+          .select("station_id")
+          .order("recorded_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        activeId = latestRow?.station_id || stationData[0]?.id;
+        setSelectedStationId(activeId);
+      }
+
       if (activeId) {
         const { data: histData } = await supabase
           .from("water_levels")
           .select("id, level_m, recorded_at")
           .eq("station_id", activeId)
-          .order("recorded_at", { ascending: true })
+          .order("recorded_at", { ascending: false })
           .limit(40);
 
-        setHistory(histData ?? []);
+        setHistory(histData ? [...histData].reverse() : []);
       }
     } catch (err) {
       console.error("Dashboard data fetch error:", err);
@@ -239,24 +252,21 @@ export function AdminDashboardContent() {
 
   const points = useMemo(() => {
     if (!history.length) {
-      // Mocked telemetry curve if station is brand new with no logs yet
       return [
-        { x: 20, y: 170 },
-        { x: 180, y: 160 },
-        { x: 340, y: 145 },
-        { x: 500, y: 110 },
-        { x: 680, y: 65 },
-        { x: 880, y: 35 },
+        { x: 30, y: chartHeight - 20 },
+        { x: chartWidth - 30, y: chartHeight - 20 },
       ];
     }
 
-    return history.map((item, idx) => {
-      const x = 30 + (idx / Math.max(1, history.length - 1)) * (chartWidth - 60);
+    const displayHistory = history.length === 1 ? [history[0], history[0]] : history;
+
+    return displayHistory.map((item, idx) => {
+      const x = 30 + (idx / Math.max(1, displayHistory.length - 1)) * (chartWidth - 60);
       const normalizedLvl = Math.min(maxScale, Math.max(0, Number(item.level_m) || 0));
       const y = chartHeight - (normalizedLvl / maxScale) * (chartHeight - 40) - 20;
       return { x, y };
     });
-  }, [history, maxScale]);
+  }, [history, maxScale, chartHeight, chartWidth]);
 
   const pathD = useMemo(() => {
     if (!points.length) return "";
@@ -297,6 +307,23 @@ export function AdminDashboardContent() {
             <span className={`telemetry-status-pill ${statusPillClass}`}>
               ● {formatLevel(currentLevel)}, {currentStatus}
             </span>
+
+            {stations.length > 0 && (
+              <div className="telemetry-station-picker">
+                <select
+                  value={currentStation?.id || ""}
+                  onChange={(e) => setSelectedStationId(Number(e.target.value))}
+                  className="telemetry-station-dropdown"
+                  aria-label="Select monitoring station"
+                >
+                  {stations.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name} ({st.station_code || `ST-${st.id}`})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="telemetry-time-filters">
@@ -468,12 +495,21 @@ export function AdminDashboardContent() {
         </div>
       </section>
 
-      <div className="telemetry-alt-sensor">
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#94a3b8" }} />
-        <span>
-          Alternative sensor ST-09: <strong>Waiting for reading</strong> (Last sync 4h ago • Solar array low voltage)
-        </span>
-      </div>
+      {stations.length > 1 && (
+        <div className="telemetry-alt-sensor">
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981" }} />
+          <span>
+            {(() => {
+              const alt = stations.find((s) => s.id !== currentStation?.id);
+              return (
+                <>
+                  Alternate station: <strong>{alt?.name}</strong> ({alt?.station_code || `ST-${alt?.id}`}) • Telemetry grid active
+                </>
+              );
+            })()}
+          </span>
+        </div>
+      )}
 
       {/* 3. System Activity & Log */}
       <section className="system-activity-card">
