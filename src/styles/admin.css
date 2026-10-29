@@ -2740,14 +2740,16 @@ textarea.form-input {
 }
 
 .lm-action-alert {
-  border: 0;
-  color: #ffffff;
-  background: var(--aq-danger);
+  border: 1px solid #fecaca !important;
+  color: #dc2626 !important;
+  background: #fef2f2 !important;
+  font-weight: 600;
 }
 
 .lm-action-alert:hover {
-  color: #ffffff;
-  opacity: 0.9;
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
 }
 
 .lm-action-report {
