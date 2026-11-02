@@ -631,10 +631,11 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
     warningLevel,
     criticalLevel
   );
-  const waterPct =
-    detectedLevel == null || criticalLevel <= 0
-      ? 0
-      : clamp((detectedLevel / criticalLevel) * 100);
+  const isLiveMonitoringActive = agentState === "online" && cameraConnected;
+  const rawPct = detectedLevel == null || criticalLevel <= 0
+    ? 0
+    : clamp((detectedLevel / criticalLevel) * 100);
+  const waterPct = rawPct > 0 ? Math.max(8, rawPct) : (isLiveMonitoringActive ? 6 : 0);
   const previousLevel = toNumber(historyRows[1]?.level_m);
   const trend =
     detectedLevel == null || previousLevel == null
