@@ -631,7 +631,7 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
     warningLevel,
     criticalLevel
   );
-  const isLiveMonitoringActive = agentState === "online" && cameraConnected;
+  const isLiveMonitoringActive = agentState === "online" && Boolean(detectorHealth?.camera_connected);
   const rawPct = detectedLevel == null || criticalLevel <= 0
     ? 0
     : clamp((detectedLevel / criticalLevel) * 100);
