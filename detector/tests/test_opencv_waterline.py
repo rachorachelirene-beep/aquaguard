@@ -87,6 +87,9 @@ class IntegrationTests(unittest.TestCase):
         calibration_patch = mock.patch.object(stream_api, 'has_calibration', return_value=True)
         calibration_patch.start()
         self.addCleanup(calibration_patch.stop)
+        roi_patch = mock.patch.object(stream_api, 'get_effective_roi', return_value='')
+        roi_patch.start()
+        self.addCleanup(roi_patch.stop)
 
     def test_yolo_unavailable_optical_valid(self):
         with mock.patch.object(stream_api, 'yolo_model', None):

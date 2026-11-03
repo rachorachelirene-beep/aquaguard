@@ -636,6 +636,18 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
     ? 0
     : clamp((detectedLevel / criticalLevel) * 100);
   const waterPct = rawPct > 0 ? Math.max(8, rawPct) : (isLiveMonitoringActive ? 6 : 0);
+  const effectiveConfidence =
+    toNumber(currentDetection?.confidence, 0) > 0
+      ? currentDetection?.confidence
+      : toNumber(currentDetection?.opencv_score, 0) > 0
+        ? currentDetection?.opencv_score
+        : currentDetection?.confidence ?? yolo?.confidence;
+  const effectiveCoverage =
+    toNumber(currentDetection?.water_coverage, 0) > 0
+      ? currentDetection?.water_coverage
+      : detectedLevel != null && rawPct > 0
+        ? Math.round(rawPct * 10) / 10
+        : currentDetection?.water_coverage ?? yolo?.water_coverage;
   const previousLevel = toNumber(historyRows[1]?.level_m);
   const trend =
     detectedLevel == null || previousLevel == null
@@ -957,18 +969,13 @@ function LiveMonitoringContent({ routePrefix, viewOnly }) {
                         <span>
                           Coverage{" "}
                           <strong>
-                            {formatPercent(
-                              currentDetection?.water_coverage ??
-                                yolo?.water_coverage
-                            )}
+                            {formatPercent(effectiveCoverage)}
                           </strong>
                         </span>
                         <span>
                           AI Conf{" "}
                           <strong>
-                            {formatPercent(
-                              currentDetection?.confidence ?? yolo?.confidence
-                            )}
+                            {formatPercent(effectiveConfidence)}
                           </strong>
                         </span>
                         <span>

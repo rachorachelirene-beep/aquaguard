@@ -2048,13 +2048,28 @@ def annotate_frame(
         CAMERA_HEIGHT,
     )
 
+    effective_mask = water_mask
     if (
-        water_mask is not None
-        and np.count_nonzero(water_mask) > 0
+        (effective_mask is None or np.count_nonzero(effective_mask) == 0)
+        and detection.get("detected")
+        and detection.get("waterline_y") is not None
+    ):
+        station_roi = get_effective_roi(detection.get("station_id"))
+        if station_roi:
+            try:
+                submerged = np.zeros((frame_height, frame_width), dtype=np.uint8)
+                submerged[max(0, int(detection["waterline_y"])):, :] = 1
+                effective_mask = clip_water_mask_to_roi(submerged, station_roi)
+            except ValueError:
+                effective_mask = water_mask
+
+    if (
+        effective_mask is not None
+        and np.count_nonzero(effective_mask) > 0
     ):
         overlay = output.copy()
 
-        overlay[water_mask > 0] = (
+        overlay[effective_mask > 0] = (
             255,
             130,
             30,
@@ -2145,13 +2160,19 @@ def annotate_frame(
     coverage = float(
         detection.get("water_coverage") or 0
     )
+    if coverage <= 0 and detected and effective_mask is not None and np.count_nonzero(effective_mask) > 0:
+        coverage = round(float(np.count_nonzero(effective_mask)) / max(1, frame_width * frame_height) * 100.0, 1)
+    elif coverage <= 0 and detected and MAX_LEVEL_M > MIN_LEVEL_M:
+        coverage = round(min(100.0, max(0.0, (level_m - MIN_LEVEL_M) / (MAX_LEVEL_M - MIN_LEVEL_M) * 100.0)), 1)
 
     confidence = float(
-        detection.get("confidence") or 0
+        detection.get("confidence") or (detection.get("opencv_score") if detected else 0) or 0
     )
 
     risk = float(
-        detection.get("flood_risk") or 0
+        detection.get("flood_risk")
+        or (((detection.get("combined_risk") or {}).get("score") or 0) / 100.0 if detected else 0)
+        or 0
     )
 
     info_lines = [
