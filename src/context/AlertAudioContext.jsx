@@ -18,6 +18,11 @@ import {
   stopCriticalAlarm,
   unlockAudio,
 } from "../lib/audioAlert";
+import {
+  getDesktopNotificationPermission,
+  requestDesktopNotificationPermission,
+  triggerDesktopNotification,
+} from "../lib/desktopNotification";
 
 const AlertAudioContext = createContext(null);
 
@@ -35,6 +40,9 @@ export function AlertAudioProvider({ children }) {
 
   const [activeCriticalAlert, setActiveCriticalAlert] = useState(null);
   const [warningToasts, setWarningToasts] = useState([]);
+  const [notificationPermission, setNotificationPermission] = useState(() => {
+    return getDesktopNotificationPermission();
+  });
   const isMutedRef = useRef(isMuted);
   const processedAlertIdsRef = useRef(new Set());
   const toastTimersRef = useRef(new Set());
@@ -42,6 +50,25 @@ export function AlertAudioProvider({ children }) {
   const [audioState, setAudioState] = useState("suspended");
   const isAudioUnlocked = audioState === "running";
   const isAudioBlocked = !isMuted && !isAudioUnlocked;
+
+  const requestDesktopNotifications = useCallback(async () => {
+    const perm = await requestDesktopNotificationPermission();
+    setNotificationPermission(perm);
+    return perm;
+  }, []);
+
+  // Request browser notification permission for desk operators on mount/sign-in
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        requestDesktopNotificationPermission()
+          .then((perm) => {
+            if (perm) setNotificationPermission(perm);
+          })
+          .catch(() => {});
+      }
+    }
+  }, [profile]);
 
   const unlockAlertAudio = useCallback(async () => {
     try {
@@ -152,6 +179,7 @@ export function AlertAudioProvider({ children }) {
 
       if (type === "critical") {
         setActiveCriticalAlert(alert);
+        triggerDesktopNotification(alert, "critical");
         if (!isMutedRef.current) {
           startCriticalAlarm();
         }
@@ -159,6 +187,7 @@ export function AlertAudioProvider({ children }) {
         const toastId = `toast-${key}`;
         const newToast = { id: toastId, alert };
         setWarningToasts((prev) => [...prev, newToast]);
+        triggerDesktopNotification(alert, "warning");
 
         // Auto-dismiss warning toast after 7 seconds
         const timer = window.setTimeout(() => {
@@ -234,6 +263,8 @@ export function AlertAudioProvider({ children }) {
         activeCriticalAlert,
         warningToasts,
         dismissWarningToast,
+        notificationPermission,
+        requestDesktopNotifications,
       }}
     >
       {children}
