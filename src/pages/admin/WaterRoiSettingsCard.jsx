@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import {
   Check,
   Crop,
-  Layers,
   RefreshCw,
   RotateCcw,
-  Save,
   Trash2,
 } from "lucide-react";
 
@@ -35,7 +33,7 @@ export default function WaterRoiSettingsCard({
           setRoiEnabled(Boolean(data.roi_enabled));
           setActiveRoiPoints(data.active_roi_points || "");
         }
-      } catch (err) {
+      } catch {
         // Silently ignore if camera agent is offline
       } finally {
         if (active) setLoading(false);
@@ -75,7 +73,7 @@ export default function WaterRoiSettingsCard({
   async function handleSavePoints(newPointsStr) {
     try {
       setLoading(true);
-      const res = await requestAdminCameraApi(apiBaseUrl, "/roi_config", {
+      await requestAdminCameraApi(apiBaseUrl, "/roi_config", {
         method: "PUT",
         body: {
           station_id: selectedStationId || "default",
@@ -169,7 +167,6 @@ export default function WaterRoiSettingsCard({
           selectedStationId={selectedStationId}
           initialPointsStr={activeRoiPoints}
           onSave={handleSavePoints}
-          onClear={handleClearRoi}
         />
       )}
 
@@ -209,7 +206,6 @@ function RoiCalibrationCanvas({
   selectedStationId,
   initialPointsStr,
   onSave,
-  onClear,
 }) {
   const [snapshotVersion, setSnapshotVersion] = useState(() => Date.now());
   const [snapshotState, setSnapshotState] = useState("loading");

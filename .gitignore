@@ -32,8 +32,11 @@ __pycache__/
 /detector/data/.camera_config_*.tmp
 /detector/data/gauge_config.json
 /detector/data/.gauge_config_*.tmp
+/detector/data/roi_config.json
+/detector/data/.roi_config_*.tmp
 /detector/data/camera_agent.lock
 /detector/data/camera_agent.pid
+/detector/data/*.log
 
 # Editor directories and files
 .vscode/*

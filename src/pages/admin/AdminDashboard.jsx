@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Activity,
-  CheckCircle2,
-  Clock,
-  Info,
-  Radio,
-  Send,
-  Wrench,
-} from "lucide-react";
+import { Info } from "lucide-react";
 
 import DashboardLayout from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import useValidatedWaterLevel from "../../hooks/useValidatedWaterLevel";
-import { cameraAgentBaseUrl } from "../../lib/cameraAgent";
 import { supabase } from "../../lib/supabase";
 import "./TelemetryDashboard.css";
 
@@ -49,7 +40,6 @@ export function AdminDashboardContent() {
   const [selectedStationId, setSelectedStationId] = useState(null);
   const [history, setHistory] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState("24h"); // "24h" | "7d" | "30d"
 
   // Forms state
@@ -90,7 +80,6 @@ export function AdminDashboardContent() {
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
       if (!supabase) return;
 
       const [stationsRes, alertsRes] = await Promise.all([
@@ -132,15 +121,15 @@ export function AdminDashboardContent() {
       }
     } catch (err) {
       console.error("Dashboard data fetch error:", err);
-    } finally {
-      setLoading(false);
     }
   }, [selectedStationId]);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(loadData, 0);
 
-    if (!supabase) return;
+    if (!supabase) {
+      return () => window.clearTimeout(timer);
+    }
     const channel = supabase
       .channel("telemetry-dashboard-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, () => {
@@ -152,6 +141,7 @@ export function AdminDashboardContent() {
       .subscribe();
 
     return () => {
+      window.clearTimeout(timer);
       supabase.removeChannel(channel);
     };
   }, [loadData]);
